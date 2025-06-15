@@ -75,7 +75,7 @@ impl CargoTapApp {
 
     fn initialize_text_system(&mut self) -> Result<()> {
         if self.text_system.is_none() {
-            let text_system = text::TextSystem::new(
+            let mut text_system = text::TextSystem::new(
                 self.render_engine.device.clone(),
                 self.render_engine.queue.clone(),
                 self.render_engine.memory_allocator.clone(),
@@ -85,12 +85,30 @@ impl CargoTapApp {
             info!("Initializing text system and rendering demo code");
             text_system.rasterize_text_to_console(&self.current_code)?;
 
+            // Initialize text pipeline
+            info!("Creating text rendering pipeline");
+            text_system.create_text_pipeline()?;
+
             let text_system_arc = Arc::new(Mutex::new(text_system));
             self.render_engine.set_text_system(text_system_arc.clone());
             self.text_system = Some(text_system_arc);
             self.update_text();
         }
         Ok(())
+    }
+
+    fn try_initialize_text_pipeline(&mut self) {
+        if let Some(text_system_arc) = &self.text_system {
+            if let Ok(mut text_system) = text_system_arc.lock() {
+                if !text_system.is_pipeline_ready && self.render_engine.is_ready() {
+                    if let Err(e) = text_system.create_text_pipeline() {
+                        log::error!("Failed to create text pipeline: {}", e);
+                    } else {
+                        info!("Text pipeline created successfully");
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -100,6 +118,9 @@ impl ApplicationHandler for CargoTapApp {
         if let Err(e) = self.initialize_text_system() {
             log::error!("Failed to initialize text system: {}", e);
         }
+
+        // Try to initialize text pipeline if it wasn't created earlier
+        self.try_initialize_text_pipeline();
     }
     fn window_event(
         &mut self,

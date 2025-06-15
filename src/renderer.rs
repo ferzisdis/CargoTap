@@ -1,4 +1,4 @@
-use std::{error::Error, sync::Arc};
+use std::sync::Arc;
 use vulkano::{
     Validated, Version, VulkanError, VulkanLibrary,
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
@@ -56,6 +56,8 @@ struct RenderContext {
     swapchain: Arc<Swapchain>,
     attachment_image_views: Vec<Arc<ImageView>>,
     pipeline: Arc<GraphicsPipeline>,
+    text_pipeline: Arc<GraphicsPipeline>,
+    text_pipeline_layout: Arc<PipelineLayout>,
     viewport: Viewport,
     recreate_swapchain: bool,
     previous_frame_end: Option<Box<dyn GpuFuture>>,
@@ -271,6 +273,14 @@ impl VulkanRenderer {
     pub fn set_text_system(&mut self, text_system: Arc<std::sync::Mutex<crate::text::TextSystem>>) {
         self.text_system = Some(text_system);
     }
+
+    pub fn is_ready(&self) -> bool {
+        self.rcx.is_some()
+    }
+
+    pub fn get_text_pipeline(&self) -> Option<Arc<GraphicsPipeline>> {
+        self.rcx.as_ref().map(|rcx| rcx.text_pipeline.clone())
+    }
 }
 
 impl ApplicationHandler for VulkanRenderer {
@@ -404,6 +414,57 @@ impl ApplicationHandler for VulkanRenderer {
             }
         }
 
+        mod text_vs {
+            vulkano_shaders::shader! {
+                ty: "vertex",
+                src: r"
+                    #version 450
+
+                    layout(location = 0) in vec2 position;
+                    layout(location = 1) in vec2 tex_coords;
+
+                    layout(location = 0) out vec2 frag_tex_coords;
+
+                    layout(push_constant) uniform PushConstants {
+                        vec2 screen_size;
+                        vec4 text_color;
+                    } pc;
+
+                    void main() {
+                        // Convert screen coordinates to normalized device coordinates
+                        vec2 normalized_pos = (position / pc.screen_size) * 2.0 - 1.0;
+                        normalized_pos.y = -normalized_pos.y; // Flip Y coordinate
+
+                        gl_Position = vec4(normalized_pos, 0.0, 1.0);
+                        frag_tex_coords = tex_coords;
+                    }
+                ",
+            }
+        }
+
+        mod text_fs {
+            vulkano_shaders::shader! {
+                ty: "fragment",
+                src: r"
+                    #version 450
+
+                    layout(location = 0) in vec2 frag_tex_coords;
+
+                    layout(location = 0) out vec4 f_color;
+
+                    layout(push_constant) uniform PushConstants {
+                        vec2 screen_size;
+                        vec4 text_color;
+                    } pc;
+
+                    void main() {
+                        // Simple white color for text (since we don't have texture atlas yet)
+                        f_color = vec4(1.0, 1.0, 1.0, 1.0);
+                    }
+                ",
+            }
+        }
+
         // Before we draw, we have to create what is called a **pipeline**. A pipeline describes
         // how a GPU operation is to be performed. It is similar to an OpenGL program, but it also
         // contains many settings for customization, all baked into a single object. For drawing,
@@ -503,6 +564,59 @@ impl ApplicationHandler for VulkanRenderer {
             .unwrap()
         };
 
+        // Create text rendering pipeline
+        let text_vs = text_vs::load(self.device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let text_fs = text_fs::load(self.device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+
+        let text_vertex_input_state = crate::text::TextVertex::per_vertex()
+            .definition(&text_vs)
+            .unwrap();
+
+        let text_stages = [
+            PipelineShaderStageCreateInfo::new(text_vs),
+            PipelineShaderStageCreateInfo::new(text_fs),
+        ];
+
+        let text_layout = PipelineLayout::new(
+            self.device.clone(),
+            PipelineDescriptorSetLayoutCreateInfo::from_stages(&text_stages)
+                .into_pipeline_layout_create_info(self.device.clone())
+                .unwrap(),
+        )
+        .unwrap();
+
+        let text_subpass = PipelineRenderingCreateInfo {
+            color_attachment_formats: vec![Some(swapchain.image_format())],
+            ..Default::default()
+        };
+
+        let text_pipeline = GraphicsPipeline::new(
+            self.device.clone(),
+            None,
+            GraphicsPipelineCreateInfo {
+                stages: text_stages.into_iter().collect(),
+                vertex_input_state: Some(text_vertex_input_state),
+                input_assembly_state: Some(InputAssemblyState::default()),
+                viewport_state: Some(ViewportState::default()),
+                rasterization_state: Some(RasterizationState::default()),
+                multisample_state: Some(MultisampleState::default()),
+                color_blend_state: Some(ColorBlendState::with_attachment_states(
+                    text_subpass.color_attachment_formats.len() as u32,
+                    ColorBlendAttachmentState::default(),
+                )),
+                dynamic_state: [DynamicState::Viewport].into_iter().collect(),
+                subpass: Some(text_subpass.into()),
+                ..GraphicsPipelineCreateInfo::layout(text_layout.clone())
+            },
+        )
+        .unwrap();
+
         // Dynamic viewports allow us to recreate just the viewport when the window is resized.
         // Otherwise we would have to recreate the whole pipeline.
         let viewport = Viewport {
@@ -535,6 +649,8 @@ impl ApplicationHandler for VulkanRenderer {
             swapchain,
             attachment_image_views,
             pipeline,
+            text_pipeline,
+            text_pipeline_layout: text_layout,
             viewport,
             recreate_swapchain,
             previous_frame_end,
@@ -687,7 +803,13 @@ impl ApplicationHandler for VulkanRenderer {
                     if let Ok(text_system) = text_system.lock() {
                         if text_system.has_text() {
                             log::info!("Drawing text to screen");
-                            if let Err(e) = text_system.draw(&mut builder) {
+                            let screen_size = [window_size.width as f32, window_size.height as f32];
+                            if let Err(e) = text_system.draw(
+                                &mut builder,
+                                rcx.text_pipeline.clone(),
+                                rcx.text_pipeline_layout.clone(),
+                                screen_size,
+                            ) {
                                 log::warn!("Failed to draw text: {}", e);
                             }
                         } else {
