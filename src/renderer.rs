@@ -48,6 +48,7 @@ pub struct VulkanRenderer {
     vertex_buffer: Subbuffer<[MyVertex]>,
     rcx: Option<RenderContext>,
     pub memory_allocator: Arc<StandardMemoryAllocator>,
+    text_system: Option<Arc<std::sync::Mutex<crate::text::TextSystem>>>,
 }
 
 struct RenderContext {
@@ -263,7 +264,12 @@ impl VulkanRenderer {
             vertex_buffer,
             rcx: None,
             memory_allocator,
+            text_system: None,
         }
+    }
+
+    pub fn set_text_system(&mut self, text_system: Arc<std::sync::Mutex<crate::text::TextSystem>>) {
+        self.text_system = Some(text_system);
     }
 }
 
@@ -674,6 +680,25 @@ impl ApplicationHandler for VulkanRenderer {
 
                 // We add a draw command.
                 unsafe { builder.draw(self.vertex_buffer.len() as u32, 1, 0, 0) }.unwrap();
+
+                // Draw text if available
+                if let Some(text_system) = &self.text_system {
+                    log::debug!("Text system is available, attempting to acquire lock");
+                    if let Ok(text_system) = text_system.lock() {
+                        if text_system.has_text() {
+                            log::info!("Drawing text to screen");
+                            if let Err(e) = text_system.draw(&mut builder) {
+                                log::warn!("Failed to draw text: {}", e);
+                            }
+                        } else {
+                            log::debug!("Text system has no text to draw");
+                        }
+                    } else {
+                        log::warn!("Failed to acquire lock on text system");
+                    }
+                } else {
+                    log::debug!("No text system available for drawing");
+                }
 
                 builder
                     // We leave the render pass.

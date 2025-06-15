@@ -1,9 +1,12 @@
-use ab_glyph::{FontArc, Font, point, PxScale, ScaleFont};
+use ab_glyph::{Font, FontArc, PxScale, ScaleFont, point};
 use anyhow::Result;
 use std::sync::Arc;
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
-    command_buffer::allocator::StandardCommandBufferAllocator,
+    command_buffer::{
+        AutoCommandBufferBuilder, PrimaryAutoCommandBuffer,
+        allocator::StandardCommandBufferAllocator,
+    },
     descriptor_set::allocator::StandardDescriptorSetAllocator,
     device::{Device, Queue},
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
@@ -40,8 +43,10 @@ impl TextSystem {
         let font_data = include_bytes!("../fonts/JetBrainsMono-Light.ttf");
         let font = FontArc::try_from_slice(font_data)?;
 
-        let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone(), Default::default());
-        let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone(), Default::default());
+        let command_buffer_allocator =
+            StandardCommandBufferAllocator::new(device.clone(), Default::default());
+        let descriptor_set_allocator =
+            StandardDescriptorSetAllocator::new(device.clone(), Default::default());
 
         Ok(Self {
             font,
@@ -57,11 +62,11 @@ impl TextSystem {
 
     pub fn update_text(&mut self, text: &str) -> Result<()> {
         self.vertices.clear();
-        
+
         let font_size = 16.0;
         let scale = PxScale::from(font_size);
         let scaled_font = self.font.as_scaled(scale);
-        
+
         let mut cursor_x = 10.0;
         let mut cursor_y = 30.0;
         let line_height = scaled_font.height();
@@ -82,7 +87,7 @@ impl TextSystem {
 
             if let Some(outlined) = scaled_font.outline_glyph(glyph.clone()) {
                 let bounds = outlined.px_bounds();
-                
+
                 // Create quad vertices for this glyph
                 let vertices = [
                     TextVertex {
@@ -156,7 +161,7 @@ impl TextSystem {
         let font_size = 16.0;
         let scale = PxScale::from(font_size);
         let scaled_font = self.font.as_scaled(scale);
-        
+
         let mut cursor_x = 0.0;
         let mut cursor_y = 0.0;
         let line_height = scaled_font.height();
@@ -180,13 +185,49 @@ impl TextSystem {
 
             if let Some(outlined) = scaled_font.outline_glyph(glyph.clone()) {
                 let bounds = outlined.px_bounds();
-                println!("Character '{}' at ({:.1}, {:.1}) bounds: ({:.1}, {:.1}) to ({:.1}, {:.1})", 
-                    ch, cursor_x, cursor_y, bounds.min.x, bounds.min.y, bounds.max.x, bounds.max.y);
+                println!(
+                    "Character '{}' at ({:.1}, {:.1}) bounds: ({:.1}, {:.1}) to ({:.1}, {:.1})",
+                    ch, cursor_x, cursor_y, bounds.min.x, bounds.min.y, bounds.max.x, bounds.max.y
+                );
             }
 
             cursor_x += scaled_font.h_advance(glyph_id);
         }
 
         Ok(())
+    }
+
+    pub fn draw(
+        &self,
+        command_buffer: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+    ) -> Result<()> {
+        log::debug!(
+            "TextSystem::draw() called with {} vertices",
+            self.vertices.len()
+        );
+        if let Some(vertex_buffer) = &self.vertex_buffer {
+            if !self.vertices.is_empty() {
+                // Bind vertex buffer and draw text vertices
+                unsafe {
+                    command_buffer
+                        .bind_vertex_buffers(0, vertex_buffer.clone())
+                        .map_err(|e| anyhow::anyhow!("Failed to bind vertex buffer: {}", e))?
+                        .draw(self.vertices.len() as u32, 1, 0, 0)
+                        .map_err(|e| anyhow::anyhow!("Failed to draw vertices: {}", e))?;
+                }
+
+                log::info!(
+                    "Successfully drew {} text vertices to screen",
+                    self.vertices.len()
+                );
+            }
+        } else {
+            log::debug!("No vertex buffer available for text rendering");
+        }
+        Ok(())
+    }
+
+    pub fn has_text(&self) -> bool {
+        !self.vertices.is_empty() && self.vertex_buffer.is_some()
     }
 }
