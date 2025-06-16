@@ -12,6 +12,8 @@ mod input;
 mod renderer;
 mod text;
 
+use text::TextRenderSettings;
+
 // Главная структура приложения
 pub struct CargoTapApp {
     render_engine: renderer::VulkanRenderer,
@@ -62,12 +64,20 @@ impl CargoTapApp {
     // }
 
     fn update_text(&mut self) {
-        // Здесь будет сложная логика обработки ввода
-        // Пока просто передаем в систему рендеринга текста
+        // Demonstrate multiple text blocks with different colors and positions
         if let Some(ref text_system) = self.text_system {
             if let Ok(mut text_system) = text_system.lock() {
-                if let Err(e) = text_system.update_text(&self.current_code) {
-                    log::error!("Failed to update text: {}", e);
+                // Main code in white
+                let main_settings = TextRenderSettings {
+                    color: [0.9, 0.9, 0.9, 1.0], // Light gray
+                    font_size: 24.0,
+                    position: [20.0, 50.0],
+                };
+
+                if let Err(e) =
+                    text_system.update_text_with_settings(&self.current_code, main_settings)
+                {
+                    log::error!("Failed to update main text: {}", e);
                 }
             }
         }
@@ -85,6 +95,8 @@ impl CargoTapApp {
             info!("Initializing text system and rendering demo code");
             text_system.rasterize_text_to_console(&self.current_code)?;
 
+            info!("Text system supports configurable colors and positioning");
+
             // Initialize text pipeline
             info!("Creating text rendering pipeline");
             text_system.create_text_pipeline()?;
@@ -101,10 +113,14 @@ impl CargoTapApp {
         if let Some(text_system_arc) = &self.text_system {
             if let Ok(mut text_system) = text_system_arc.lock() {
                 if !text_system.is_pipeline_ready && self.render_engine.is_ready() {
-                    if let Err(e) = text_system.create_text_pipeline() {
-                        log::error!("Failed to create text pipeline: {}", e);
-                    } else {
-                        info!("Text pipeline created successfully");
+                    if let Some(text_pipeline_layout) =
+                        self.render_engine.get_text_pipeline_layout()
+                    {
+                        if let Err(e) = text_system.create_text_atlas(text_pipeline_layout) {
+                            log::error!("Failed to create text atlas: {}", e);
+                        } else {
+                            info!("Text atlas created successfully");
+                        }
                     }
                 }
             }

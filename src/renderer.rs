@@ -281,6 +281,12 @@ impl VulkanRenderer {
     pub fn get_text_pipeline(&self) -> Option<Arc<GraphicsPipeline>> {
         self.rcx.as_ref().map(|rcx| rcx.text_pipeline.clone())
     }
+
+    pub fn get_text_pipeline_layout(&self) -> Option<Arc<PipelineLayout>> {
+        self.rcx
+            .as_ref()
+            .map(|rcx| rcx.text_pipeline_layout.clone())
+    }
 }
 
 impl ApplicationHandler for VulkanRenderer {
@@ -433,7 +439,7 @@ impl ApplicationHandler for VulkanRenderer {
                     void main() {
                         // Convert screen coordinates to normalized device coordinates
                         vec2 normalized_pos = (position / pc.screen_size) * 2.0 - 1.0;
-                        normalized_pos.y = -normalized_pos.y; // Flip Y coordinate
+                        // normalized_pos.y = -normalized_pos.y; // Flip Y coordinate
 
                         gl_Position = vec4(normalized_pos, 0.0, 1.0);
                         frag_tex_coords = tex_coords;
@@ -452,14 +458,21 @@ impl ApplicationHandler for VulkanRenderer {
 
                     layout(location = 0) out vec4 f_color;
 
+                    layout(set = 0, binding = 0) uniform sampler2D glyph_texture;
+
                     layout(push_constant) uniform PushConstants {
                         vec2 screen_size;
                         vec4 text_color;
                     } pc;
 
                     void main() {
-                        // Simple white color for text (since we don't have texture atlas yet)
-                        f_color = vec4(1.0, 1.0, 1.0, 1.0);
+                        float alpha = texture(glyph_texture, frag_tex_coords).r;
+                        f_color = vec4(pc.text_color.rgb, pc.text_color.a * alpha);
+
+                        // Discard fully transparent pixels
+                        if (f_color.a < 0.01) {
+                            discard;
+                        }
                     }
                 ",
             }
@@ -802,7 +815,7 @@ impl ApplicationHandler for VulkanRenderer {
                     log::debug!("Text system is available, attempting to acquire lock");
                     if let Ok(text_system) = text_system.lock() {
                         if text_system.has_text() {
-                            log::info!("Drawing text to screen");
+                            log::debug!("Drawing text to screen {:?}", window_size);
                             let screen_size = [window_size.width as f32, window_size.height as f32];
                             if let Err(e) = text_system.draw(
                                 &mut builder,
