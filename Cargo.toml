@@ -12,3 +12,4 @@ anyhow = "1.0.75"
 simple_logger = "4.3.0"
 log = "0.4.20"
 bytemuck = { version = "1.14", features = ["derive"] }
+image = "0.24"

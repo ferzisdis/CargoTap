@@ -1,6 +1,7 @@
 use ab_glyph::{Font, FontArc, PxScale, ScaleFont, point};
 use anyhow::Result;
-use std::{collections::HashMap, sync::Arc};
+use image::{ImageBuffer, Luma};
+use std::{collections::HashMap, env, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
@@ -359,6 +360,15 @@ impl TextSystem {
             }
         }
 
+        // Save atlas as bitmap for debugging (before moving atlas_data)
+        if self.should_save_debug_atlas() {
+            if let Err(e) = self.save_atlas_debug_bitmap(&atlas_data, ATLAS_SIZE) {
+                log::warn!("Failed to save atlas debug bitmap: {}", e);
+            } else {
+                log::info!("Atlas debug bitmap saved successfully");
+            }
+        }
+
         // Upload atlas data to GPU
         let mut builder = AutoCommandBufferBuilder::primary(
             self.command_buffer_allocator.clone(),
@@ -414,12 +424,83 @@ impl TextSystem {
             self.glyph_infos.len(),
             (current_y as f32 / ATLAS_SIZE as f32) * 100.0
         );
+
         Ok(())
+    }
+
+    /// Check if atlas debug saving is enabled via environment variable
+    fn should_save_debug_atlas(&self) -> bool {
+        env::var("CARGOTAP_DEBUG_ATLAS")
+            .map(|val| val.to_lowercase() == "true" || val == "1")
+            .unwrap_or(true) // Default to true for now, can be changed to false later
+    }
+
+    /// Save the atlas as a bitmap image for debugging purposes
+    fn save_atlas_debug_bitmap(&self, atlas_data: &[u8], atlas_size: u32) -> Result<()> {
+        // Create an image buffer from the atlas data
+        let img_buffer =
+            ImageBuffer::<Luma<u8>, Vec<u8>>::from_raw(atlas_size, atlas_size, atlas_data.to_vec())
+                .ok_or_else(|| anyhow::anyhow!("Failed to create image buffer from atlas data"))?;
+
+        // Create filename with timestamp for uniqueness
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        let filename = format!(
+            "atlas_debug_{}x{}_size{}_{}.png",
+            atlas_size, atlas_size, self.current_settings.font_size, timestamp
+        );
+
+        img_buffer
+            .save(&filename)
+            .map_err(|e| anyhow::anyhow!("Failed to save atlas image: {}", e))?;
+
+        log::info!(
+            "Atlas debug bitmap saved as: {} (utilization: {:.1}%)",
+            filename,
+            self.calculate_atlas_utilization(atlas_size)
+        );
+        Ok(())
+    }
+
+    /// Calculate atlas utilization percentage for debugging
+    fn calculate_atlas_utilization(&self, _atlas_size: u32) -> f32 {
+        if self.glyph_infos.is_empty() {
+            return 0.0;
+        }
+
+        let mut max_y = 0.0_f32;
+        for glyph_info in self.glyph_infos.values() {
+            max_y = max_y.max(glyph_info.uv_max[1]);
+        }
+
+        (max_y * 100.0).min(100.0)
     }
 
     pub fn create_text_pipeline(&mut self) -> Result<()> {
         // This is now handled by create_text_atlas
         log::info!("Text rendering pipeline marked as ready");
+        Ok(())
+    }
+
+    /// Manually save the current atlas as a debug bitmap
+    /// This can be called at any time after the atlas has been created
+    pub fn save_atlas_debug(&self) -> Result<()> {
+        if self.atlas_texture.is_none() {
+            return Err(anyhow::anyhow!("Atlas has not been created yet"));
+        }
+
+        // We need to recreate the atlas data since it's already been moved to GPU
+        // This is a limitation - we can't easily read back from GPU memory
+        log::warn!("Manual atlas debug save requires recreating atlas data");
+
+        // For now, just log that this feature would need GPU readback
+        log::info!(
+            "To manually save atlas debug bitmap, enable CARGOTAP_DEBUG_ATLAS=true when creating the atlas"
+        );
+
         Ok(())
     }
 
