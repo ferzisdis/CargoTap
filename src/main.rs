@@ -67,16 +67,7 @@ impl CargoTapApp {
         // Demonstrate multiple text blocks with different colors and positions
         if let Some(ref text_system) = self.text_system {
             if let Ok(mut text_system) = text_system.lock() {
-                // Main code in white
-                let main_settings = TextRenderSettings {
-                    color: [0.9, 0.9, 0.9, 1.0], // Light gray
-                    font_size: 24.0,
-                    position: [20.0, 50.0],
-                };
-
-                if let Err(e) =
-                    text_system.update_text_with_settings(&self.current_code, main_settings)
-                {
+                if let Err(e) = text_system.update_text_with_settings(&self.current_code) {
                     log::error!("Failed to update main text: {}", e);
                 }
             }
@@ -85,10 +76,18 @@ impl CargoTapApp {
 
     fn initialize_text_system(&mut self) -> Result<()> {
         if self.text_system.is_none() {
+            // Define initial text render settings
+            let initial_settings = TextRenderSettings {
+                color: [0.9, 0.9, 0.9, 1.0], // Light gray
+                font_size: 64.0,
+                position: [20.0, 50.0],
+            };
+
             let mut text_system = text::TextSystem::new(
                 self.render_engine.device.clone(),
                 self.render_engine.queue.clone(),
                 self.render_engine.memory_allocator.clone(),
+                initial_settings,
             )?;
 
             // Demonstrate text rendering to console

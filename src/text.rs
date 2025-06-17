@@ -91,6 +91,7 @@ impl TextSystem {
         device: Arc<Device>,
         queue: Arc<Queue>,
         memory_allocator: Arc<StandardMemoryAllocator>,
+        settings: TextRenderSettings,
     ) -> Result<Self> {
         // Load font
         let font_data = include_bytes!("../fonts/JetBrainsMono-Light.ttf");
@@ -120,27 +121,18 @@ impl TextSystem {
             atlas_sampler: None,
             glyph_infos: HashMap::new(),
             descriptor_set: None,
-            current_settings: TextRenderSettings::default(),
+            current_settings: settings,
         })
     }
 
-    pub fn update_text(&mut self, text: &str) -> Result<()> {
-        self.update_text_with_settings(text, TextRenderSettings::default())
-    }
-
-    pub fn update_text_with_settings(
-        &mut self,
-        text: &str,
-        settings: TextRenderSettings,
-    ) -> Result<()> {
+    pub fn update_text_with_settings(&mut self, text: &str) -> Result<()> {
         self.vertices.clear();
-        self.current_settings = settings;
 
-        let scale = PxScale::from(settings.font_size);
+        let scale = PxScale::from(self.current_settings.font_size);
         let scaled_font = self.font.as_scaled(scale);
 
-        let mut cursor_x = settings.position[0];
-        let mut cursor_y = settings.position[1];
+        let mut cursor_x = self.current_settings.position[0];
+        let mut cursor_y = self.current_settings.position[1];
         let line_height = scaled_font.height();
 
         for ch in text.chars() {
@@ -274,13 +266,13 @@ impl TextSystem {
     pub fn create_text_atlas(&mut self, pipeline_layout: Arc<PipelineLayout>) -> Result<()> {
         // Create texture atlas
         const ATLAS_SIZE: u32 = 512;
-        const FONT_SIZE: f32 = 32.0;
+        let font_size = self.current_settings.font_size;
 
         log::info!(
             "Creating font atlas with size {}x{} for font size {}",
             ATLAS_SIZE,
             ATLAS_SIZE,
-            FONT_SIZE
+            font_size
         );
 
         // Create atlas texture
@@ -306,7 +298,7 @@ impl TextSystem {
 
         // Rasterize glyphs to atlas
         let mut atlas_data = vec![0u8; (ATLAS_SIZE * ATLAS_SIZE) as usize];
-        let scale = PxScale::from(FONT_SIZE);
+        let scale = PxScale::from(font_size);
         let scaled_font = self.font.as_scaled(scale);
 
         let mut current_x = 0;
