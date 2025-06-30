@@ -467,10 +467,13 @@ impl ApplicationHandler for VulkanRenderer {
 
                     void main() {
                         float alpha = texture(glyph_texture, frag_tex_coords).r;
-                        f_color = vec4(pc.text_color.rgb, pc.text_color.a * alpha);
+                        // f_color = vec4(pc.text_color.rgb, pc.text_color.a * alpha);
+
+                        f_color = vec4(pc.text_color.rgb * alpha, 1.0);
+                        // f_color = texture(glyph_texture, frag_tex_coords);
 
                         // Discard fully transparent pixels
-                        if (f_color.a < 0.01) {
+                        if (alpha < 0.01) {
                             discard;
                         }
                     }
