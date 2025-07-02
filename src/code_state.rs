@@ -51,7 +51,7 @@ impl CodeState {
 
     /// Returns the complete code (printed + current)
     pub fn get_full_code(&self) -> String {
-        format!("{}{}", "", self.current_code)
+        format!("{}|{}", self.printed_code, self.current_code)
     }
 
     /// Returns the current typing position (length of printed_code)

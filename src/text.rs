@@ -38,6 +38,38 @@ pub struct TextRenderSettings {
     pub position: [f32; 2],
 }
 
+#[derive(Debug, Clone)]
+pub struct ColoredChar {
+    pub ch: char,
+    pub color: [f32; 4],
+}
+
+#[derive(Debug, Clone)]
+pub struct ColoredText {
+    pub chars: Vec<ColoredChar>,
+}
+
+impl ColoredText {
+    pub fn new() -> Self {
+        Self { chars: Vec::new() }
+    }
+
+    pub fn from_str_with_color(text: &str, color: [f32; 4]) -> Self {
+        let chars = text.chars().map(|ch| ColoredChar { ch, color }).collect();
+        Self { chars }
+    }
+
+    pub fn push(&mut self, ch: char, color: [f32; 4]) {
+        self.chars.push(ColoredChar { ch, color });
+    }
+
+    pub fn push_str(&mut self, text: &str, color: [f32; 4]) {
+        for ch in text.chars() {
+            self.push(ch, color);
+        }
+    }
+}
+
 impl Default for TextRenderSettings {
     fn default() -> Self {
         Self {
@@ -66,6 +98,8 @@ pub struct TextVertex {
     pub position: [f32; 2],
     #[format(R32G32_SFLOAT)]
     pub tex_coords: [f32; 2],
+    #[format(R32G32B32A32_SFLOAT)]
+    pub color: [f32; 4],
 }
 
 pub struct TextSystem {
@@ -126,7 +160,7 @@ impl TextSystem {
         })
     }
 
-    pub fn update_text_with_settings(&mut self, text: &str) -> Result<()> {
+    pub fn update_text_with_settings(&mut self, colored_text: &ColoredText) -> Result<()> {
         self.vertices.clear();
 
         let scale = PxScale::from(self.current_settings.font_size);
@@ -136,7 +170,9 @@ impl TextSystem {
         let mut cursor_y = self.current_settings.position[1];
         let line_height = scaled_font.height();
 
-        for ch in text.chars() {
+        for colored_char in &colored_text.chars {
+            let ch = colored_char.ch;
+            let char_color = colored_char.color;
             if ch == '\n' {
                 cursor_x = 10.0;
                 cursor_y += line_height;
@@ -157,26 +193,32 @@ impl TextSystem {
                     TextVertex {
                         position: [pos_x, pos_y],
                         tex_coords: [glyph_info.uv_min[0], glyph_info.uv_min[1]],
+                        color: char_color,
                     },
                     TextVertex {
                         position: [pos_x + glyph_info.size[0], pos_y],
                         tex_coords: [glyph_info.uv_max[0], glyph_info.uv_min[1]],
+                        color: char_color,
                     },
                     TextVertex {
                         position: [pos_x, pos_y + glyph_info.size[1]],
                         tex_coords: [glyph_info.uv_min[0], glyph_info.uv_max[1]],
+                        color: char_color,
                     },
                     TextVertex {
                         position: [pos_x + glyph_info.size[0], pos_y],
                         tex_coords: [glyph_info.uv_max[0], glyph_info.uv_min[1]],
+                        color: char_color,
                     },
                     TextVertex {
                         position: [pos_x + glyph_info.size[0], pos_y + glyph_info.size[1]],
                         tex_coords: [glyph_info.uv_max[0], glyph_info.uv_max[1]],
+                        color: char_color,
                     },
                     TextVertex {
                         position: [pos_x, pos_y + glyph_info.size[1]],
                         tex_coords: [glyph_info.uv_min[0], glyph_info.uv_max[1]],
+                        color: char_color,
                     },
                 ];
 
@@ -191,6 +233,12 @@ impl TextSystem {
 
         self.update_vertex_buffer()?;
         Ok(())
+    }
+
+    // Helper method for backward compatibility with &str
+    pub fn update_text_with_settings_str(&mut self, text: &str) -> Result<()> {
+        let colored_text = ColoredText::from_str_with_color(text, self.current_settings.color);
+        self.update_text_with_settings(&colored_text)
     }
 
     fn update_vertex_buffer(&mut self) -> Result<()> {

@@ -14,7 +14,10 @@ mod input;
 mod renderer;
 mod text;
 
-use text::TextRenderSettings;
+use text::{ColoredText, TextRenderSettings};
+
+mod examples;
+use examples::colored_text_demo::ColoredTextDemo;
 
 // Главная структура приложения
 pub struct CargoTapApp {
@@ -42,15 +45,39 @@ impl CargoTapApp {
     }
 
     fn update_text(&mut self) {
-        // Demonstrate multiple text blocks with different colors and positions
+        // Demonstrate colored text functionality
         if let Some(ref text_system) = self.text_system {
             if let Ok(mut text_system) = text_system.lock() {
-                let display_text = self.code_state.get_full_code();
-                if let Err(e) = text_system.update_text_with_settings(&display_text) {
+                let colored_text = self.create_colored_text();
+                if let Err(e) = text_system.update_text_with_settings(&colored_text) {
                     log::error!("Failed to update main text: {}", e);
                 }
             }
         }
+    }
+
+    fn create_colored_text(&self) -> ColoredText {
+        // Create comprehensive demo with header and syntax highlighting
+        let mut colored_text = ColoredText::new();
+
+        // Add a colorful header
+        colored_text.push_str("🦀 CargoTap ", [1.0, 0.5, 0.0, 1.0]); // Orange
+        colored_text.push_str("Live Demo\n", [0.0, 1.0, 1.0, 1.0]); // Cyan
+        colored_text.push_str("─".repeat(30).as_str(), [0.5, 0.8, 1.0, 1.0]); // Light blue
+        colored_text.push('\n', [1.0, 1.0, 1.0, 1.0]);
+
+        // Add syntax highlighted code
+        let display_text = self.code_state.get_full_code();
+        let syntax_highlighted = ColoredTextDemo::create_syntax_highlighted_rust(&display_text);
+        colored_text.chars.extend(syntax_highlighted.chars);
+
+        // Add footer with rainbow text
+        colored_text.push('\n', [1.0, 1.0, 1.0, 1.0]);
+        colored_text.push_str("✨ Rainbow: ", [1.0, 1.0, 1.0, 1.0]);
+        let rainbow = ColoredTextDemo::create_rainbow_text("Per-character colors work!");
+        colored_text.chars.extend(rainbow.chars);
+
+        colored_text
     }
 
     fn initialize_text_system(&mut self) -> Result<()> {

@@ -428,8 +428,10 @@ impl ApplicationHandler for VulkanRenderer {
 
                     layout(location = 0) in vec2 position;
                     layout(location = 1) in vec2 tex_coords;
+                    layout(location = 2) in vec4 color;
 
                     layout(location = 0) out vec2 frag_tex_coords;
+                    layout(location = 1) out vec4 frag_color;
 
                     layout(push_constant) uniform PushConstants {
                         vec2 screen_size;
@@ -443,6 +445,7 @@ impl ApplicationHandler for VulkanRenderer {
 
                         gl_Position = vec4(normalized_pos, 0.0, 1.0);
                         frag_tex_coords = tex_coords;
+                        frag_color = color;
                     }
                 ",
             }
@@ -455,6 +458,7 @@ impl ApplicationHandler for VulkanRenderer {
                     #version 450
 
                     layout(location = 0) in vec2 frag_tex_coords;
+                    layout(location = 1) in vec4 frag_color;
 
                     layout(location = 0) out vec4 f_color;
 
@@ -467,10 +471,9 @@ impl ApplicationHandler for VulkanRenderer {
 
                     void main() {
                         float alpha = texture(glyph_texture, frag_tex_coords).r;
-                        // f_color = vec4(pc.text_color.rgb, pc.text_color.a * alpha);
 
-                        f_color = vec4(pc.text_color.rgb * alpha, 1.0);
-                        // f_color = texture(glyph_texture, frag_tex_coords);
+                        // Use per-vertex color instead of push constant color
+                        f_color = vec4(frag_color.rgb * alpha, frag_color.a);
 
                         // Discard fully transparent pixels
                         if (alpha < 0.01) {

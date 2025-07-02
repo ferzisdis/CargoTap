@@ -8,6 +8,7 @@ A modern typing game built with Rust and Vulkan, designed to help you practice t
 - **Code State Management**: Sophisticated tracking of typed vs. remaining code
 - **Vulkan-based Rendering**: High-performance graphics rendering using the Vulkan API
 - **Font Rendering**: Support for TrueType fonts with glyph analysis and positioning
+- **Colored Text System**: Per-character color support for syntax highlighting and visual effects
 - **Multi-language Support**: Handles both ASCII and Unicode characters (including Cyrillic)
 - **Progress Tracking**: Real-time progress monitoring and statistics
 - **Backspace Support**: Ability to correct mistakes and move characters back
@@ -19,7 +20,8 @@ The application consists of several key components:
 
 - **CodeState**: Manages the state of code being typed, tracking `current_code` (remaining) and `printed_code` (typed)
 - **VulkanRenderer**: Core graphics engine handling Vulkan initialization, device management, and rendering pipeline
-- **TextSystem**: Font loading, glyph rasterization, and text layout management
+- **TextSystem**: Font loading, glyph rasterization, and text layout management with per-character color support
+- **ColoredText System**: Advanced text rendering with individual character colors for syntax highlighting
 - **InputHandler**: Advanced input processing with character-by-character validation
 - **Demo System**: Both graphical and command-line demo modes
 
@@ -76,9 +78,12 @@ CargoTap/
 │   ├── code_state.rs        # Code state management (NEW)
 │   ├── demo_code_state.rs   # Command-line demo (NEW)
 │   ├── renderer.rs          # Vulkan rendering engine
-│   ├── text.rs              # Text rendering system
+│   ├── text.rs              # Text rendering system with colored text support
 │   ├── input.rs             # Enhanced input handling
-│   └── demo_code.rs         # Sample code for typing practice
+│   ├── demo_code.rs         # Sample code for typing practice
+│   └── examples/
+│       ├── mod.rs           # Examples module
+│       └── colored_text_demo.rs  # Colored text demonstrations
 ├── fonts/
 │   └── JetBrainsMono-Light.ttf  # Font file
 └── Cargo.toml               # Project dependencies
@@ -139,8 +144,78 @@ if let Some(next) = code_state.peek_next_character() {
 
 - **Typing Metrics**: WPM calculation, accuracy statistics, and performance tracking
 - **Difficulty Levels**: Multiple code complexity levels and programming languages
-- **Syntax Highlighting**: Visual distinction for different code elements
+- **Enhanced Syntax Highlighting**: More sophisticated color schemes and themes
 - **Leaderboards**: Score tracking and comparison features
 - **Custom Code**: Ability to load and practice with custom code files
 - **Multiple Languages**: Support for different programming languages
 - **Advanced Feedback**: Real-time typing technique analysis and suggestions
+- **Animation Effects**: Text animations and transitions using the colored text system
+
+## Colored Text System
+
+The application now features a sophisticated colored text rendering system that allows individual characters to have their own colors. This enables:
+
+### Features
+- **Per-character Colors**: Each character can have its own RGBA color value
+- **Syntax Highlighting**: Automatic color coding for Rust keywords, types, and operators
+- **Rainbow Effects**: Create colorful text patterns and gradients
+- **Visual Feedback**: Enhanced user interface with colored elements
+
+### API Usage
+
+#### Basic ColoredText Creation
+```rust
+use crate::text::{ColoredText, ColoredChar};
+
+// Create empty colored text
+let mut colored_text = ColoredText::new();
+
+// Add individual colored characters
+colored_text.push('H', [1.0, 0.0, 0.0, 1.0]); // Red 'H'
+colored_text.push('i', [0.0, 1.0, 0.0, 1.0]); // Green 'i'
+
+// Add multiple characters with same color
+colored_text.push_str("Hello", [0.0, 0.0, 1.0, 1.0]); // Blue "Hello"
+```
+
+#### Syntax Highlighting
+```rust
+use crate::examples::ColoredTextDemo;
+
+let code = r#"fn main() {
+    println!("Hello, World!");
+}"#;
+
+let highlighted = ColoredTextDemo::create_syntax_highlighted_rust(code);
+```
+
+#### Rainbow Text Effect
+```rust
+let rainbow = ColoredTextDemo::create_rainbow_text("RAINBOW TEXT");
+```
+
+#### Gradient Text Effect
+```rust
+let gradient = ColoredTextDemo::create_gradient_text(
+    "Gradient Text",
+    [1.0, 0.0, 0.0, 1.0], // Start: Red
+    [0.0, 0.0, 1.0, 1.0], // End: Blue
+);
+```
+
+### Color Format
+Colors use RGBA format with values from 0.0 to 1.0:
+- `[1.0, 0.0, 0.0, 1.0]` - Red, fully opaque
+- `[0.0, 1.0, 0.0, 0.5]` - Green, 50% transparent
+- `[0.5, 0.5, 0.5, 1.0]` - Gray, fully opaque
+
+### Integration with TextSystem
+```rust
+// Update text system with colored text
+text_system.update_text_with_settings(&colored_text)?;
+
+// Backward compatibility with plain strings
+text_system.update_text_with_settings_str("Plain text")?;
+```
+
+For detailed examples and advanced usage, see `COLORED_TEXT_USAGE.md` and the `examples/` directory.
