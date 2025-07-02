@@ -1,5 +1,5 @@
 /*
- * Демонстрационный код для отображения
+ * Demo code for Demonstration
  */
 fn main() {
     println!("Hello CodeFlow!");

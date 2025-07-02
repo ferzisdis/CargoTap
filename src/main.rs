@@ -8,6 +8,8 @@ use winit::{
     window::WindowId,
 };
 
+mod code_state;
+mod demo_code_state;
 mod input;
 mod renderer;
 mod text;
@@ -19,7 +21,7 @@ pub struct CargoTapApp {
     render_engine: renderer::VulkanRenderer,
     text_system: Option<Arc<Mutex<text::TextSystem>>>,
     input_handler: input::InputHandler,
-    current_code: String,
+    code_state: code_state::CodeState,
 }
 
 impl CargoTapApp {
@@ -28,46 +30,23 @@ impl CargoTapApp {
         let input_handler = input::InputHandler::new();
 
         // Загрузка демо-кода вместо GitHub API на старте
-        let current_code = include_str!("demo_code.rs").to_string();
+        let demo_code = include_str!("demo_code.rs").to_string();
+        let code_state = code_state::CodeState::new(demo_code);
 
         Ok(Self {
             render_engine,
             text_system: None,
             input_handler,
-            current_code,
+            code_state,
         })
     }
-
-    // pub fn run(mut self) -> Result<()> {
-    //     event_loop.run(move |event, _, control_flow| {
-    //         *control_flow = ControlFlow::Poll;
-
-    //         match event {
-    //             Event::WindowEvent { event, .. } => match event {
-    //                 WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-    //                 WindowEvent::Resized(_) => self.render_engine.recreate_swapchain = true,
-    //                 WindowEvent::KeyboardInput { input, .. } => {
-    //                     self.input_handler.process_key_event(input);
-    //                     // Обработка ввода и обновление текста
-    //                     self.update_text();
-    //                 }
-    //                 _ => (),
-    //             },
-    //             Event::MainEventsCleared => {
-    //                 self.render();
-    //             }
-    //             _ => (),
-    //         }
-    //     });
-
-    //     Ok(())
-    // }
 
     fn update_text(&mut self) {
         // Demonstrate multiple text blocks with different colors and positions
         if let Some(ref text_system) = self.text_system {
             if let Ok(mut text_system) = text_system.lock() {
-                if let Err(e) = text_system.update_text_with_settings(&self.current_code) {
+                let display_text = self.code_state.get_full_code();
+                if let Err(e) = text_system.update_text_with_settings(&display_text) {
                     log::error!("Failed to update main text: {}", e);
                 }
             }
@@ -92,7 +71,16 @@ impl CargoTapApp {
 
             // Demonstrate text rendering to console
             info!("Initializing text system and rendering demo code");
-            text_system.rasterize_text_to_console(&self.current_code)?;
+            let display_text = self.code_state.get_full_code();
+            text_system.rasterize_text_to_console(&display_text)?;
+
+            // Show initial code state
+            info!("Initial code state:");
+            info!("  Total characters: {}", self.code_state.get_total_length());
+            info!("  Progress: {:.1}%", self.code_state.get_progress() * 100.0);
+            if let Some(next_char) = self.code_state.peek_next_character() {
+                info!("  Next character to type: '{}'", next_char);
+            }
 
             info!("Text system supports configurable colors and positioning");
 
@@ -143,12 +131,19 @@ impl ApplicationHandler for CargoTapApp {
         _window_id: WindowId,
         event: WindowEvent,
     ) {
-        match event {
-            WindowEvent::KeyboardInput { .. } => {
-                // Handle input and update text
-                self.update_text();
-            }
-            _ => {}
+        // Handle keyboard input before passing to render engine
+        if let WindowEvent::KeyboardInput {
+            event: key_event, ..
+        } = &event
+        {
+            // Process the key event with input handler
+            self.input_handler.process_key_event(key_event.clone());
+
+            // Handle typing logic based on input
+            self.handle_typing_input();
+
+            // Update text display
+            self.update_text();
         }
 
         self.render_engine
@@ -160,11 +155,98 @@ impl ApplicationHandler for CargoTapApp {
     }
 }
 
+impl CargoTapApp {
+    fn handle_typing_input(&mut self) {
+        if let Some(action) = self.input_handler.get_last_action() {
+            match action {
+                input::InputAction::TypeCharacter(typed_char) => {
+                    if let Some(expected_char) = self.code_state.peek_next_character() {
+                        if *typed_char == expected_char {
+                            // Correct character typed - advance the code
+                            let advanced_char = self.code_state.type_character();
+                            if let Some(ch) = advanced_char {
+                                info!("✓ Correctly typed: '{}'", ch);
+                                info!(
+                                    "Progress: {:.1}% ({}/{})",
+                                    self.code_state.get_progress() * 100.0,
+                                    self.code_state.printed_code.len(),
+                                    self.code_state.get_total_length()
+                                );
+
+                                if self.code_state.is_complete() {
+                                    info!("🎉 Code typing completed!");
+                                } else if let Some(next_char) =
+                                    self.code_state.peek_next_character()
+                                {
+                                    info!("Next character: '{}'", next_char);
+                                }
+                            }
+                        } else {
+                            info!(
+                                "❌ Incorrect character! Expected '{}', got '{}'",
+                                expected_char, typed_char
+                            );
+                        }
+                    }
+                }
+                input::InputAction::Backspace => {
+                    // Move character back from printed to current
+                    if let Some(ch) = self.code_state.backspace() {
+                        info!("⬅️ Backspace: moved '{}' back to current code", ch);
+                        info!(
+                            "Progress: {:.1}% ({}/{})",
+                            self.code_state.get_progress() * 100.0,
+                            self.code_state.printed_code.len(),
+                            self.code_state.get_total_length()
+                        );
+                        if let Some(next_char) = self.code_state.peek_next_character() {
+                            info!("Next character: '{}'", next_char);
+                        }
+                    }
+                }
+                input::InputAction::Enter => {
+                    // Handle enter key if it matches expected character
+                    if let Some(expected_char) = self.code_state.peek_next_character() {
+                        if expected_char == '\n' {
+                            let advanced_char = self.code_state.type_character();
+                            if let Some(_ch) = advanced_char {
+                                info!("✓ Correctly typed newline");
+                                info!(
+                                    "Progress: {:.1}% ({}/{})",
+                                    self.code_state.get_progress() * 100.0,
+                                    self.code_state.printed_code.len(),
+                                    self.code_state.get_total_length()
+                                );
+                            }
+                        } else {
+                            info!("❌ Incorrect! Expected '{}', got newline", expected_char);
+                        }
+                    }
+                }
+                input::InputAction::Other => {
+                    // Handle other keys if needed
+                }
+            }
+
+            // Clear the action after processing
+            self.input_handler.clear_last_action();
+        }
+    }
+}
+
 fn main() -> Result<()> {
     simple_logger::init_with_level(log::Level::Info).unwrap();
 
+    // Check for demo argument
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() > 1 && args[1] == "demo" {
+        demo_code_state::run_demo();
+        return Ok(());
+    }
+
     info!("Starting CargoTap application");
     info!("Loading demo code from demo_code.rs");
+    info!("Tip: Run with 'cargo run demo' for command-line demo");
 
     // Display the demo code content
     let demo_code = include_str!("demo_code.rs");
