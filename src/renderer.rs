@@ -793,7 +793,7 @@ impl ApplicationHandler for VulkanRenderer {
                             //
                             // Only attachments that have `AttachmentLoadOp::Clear` are provided
                             // with clear values, any others should use `None` as the clear value.
-                            clear_value: Some([0.0, 0.0, 1.0, 1.0].into()),
+                            clear_value: Some([0.0, 0.0, 0.0, 1.0].into()),
                             ..RenderingAttachmentInfo::image_view(
                                 // We specify image view corresponding to the currently acquired
                                 // swapchain image, to use for this attachment.
@@ -814,7 +814,7 @@ impl ApplicationHandler for VulkanRenderer {
                     .unwrap();
 
                 // We add a draw command.
-                unsafe { builder.draw(self.vertex_buffer.len() as u32, 1, 0, 0) }.unwrap();
+                // unsafe { builder.draw(self.vertex_buffer.len() as u32, 1, 0, 0) }.unwrap();
 
                 // Draw text if available
                 if let Some(text_system) = &self.text_system {
