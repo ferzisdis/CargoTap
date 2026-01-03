@@ -1,0 +1,199 @@
+# CargoTap Configuration File
+#
+# This is the main configuration file for the CargoTap typing game.
+# Copy this file to 'config.toml' and adjust the values as needed.
+#
+# All values shown here are the defaults. You can delete any section
+# you don't want to customize and the defaults will be used.
+
+# =============================================================================
+# Window Configuration
+# =============================================================================
+[window]
+# Window title displayed in the title bar
+title = "CargoTap - Typing Game"
+
+# Initial window dimensions in pixels
+width = 1280
+height = 720
+
+# Enable vertical sync to prevent screen tearing
+vsync = true
+
+# Target frame rate (0 = unlimited, typically 60 or 144)
+target_fps = 60
+
+
+# =============================================================================
+# Text Rendering Configuration
+# =============================================================================
+[text]
+# Path to the font file (relative to project root)
+# Make sure this file exists! Default uses JetBrains Mono
+font_path = "fonts/JetBrainsMono-Light.ttf"
+
+# Font size in points (larger = bigger text)
+# Recommended range: 32.0 - 128.0
+font_size = 64.0
+
+# Text starting position on screen (X, Y coordinates)
+# X: horizontal position from left edge
+# Y: vertical position from top edge
+position_x = 20.0
+position_y = 50.0
+
+# Line spacing multiplier (1.0 = normal, 1.5 = 50% more space)
+line_spacing = 1.2
+
+# Additional spacing between characters (0.0 = normal)
+char_spacing = 0.0
+
+# Enable syntax highlighting for code (colors keywords, types, etc.)
+syntax_highlighting = true
+
+# Enable rainbow effects in header text
+rainbow_effects = true
+
+
+# =============================================================================
+# Gameplay Configuration
+# =============================================================================
+[gameplay]
+# Path to custom code file to practice typing
+# If not set (or commented out), uses built-in demo code
+# Example: custom_code_path = "my_code.rs"
+# custom_code_path = "examples/practice_code.rs"
+
+# Allow using backspace to correct mistakes
+allow_backspace = true
+
+# Show typing statistics (progress, characters typed, etc.)
+show_statistics = true
+
+# Enable audio feedback for keystrokes (future feature)
+audio_feedback = false
+
+# Strict mode: no backspace, every mistake ends the game
+strict_mode = false
+
+# Show a hint for the next character to type
+show_next_char_hint = true
+
+
+# =============================================================================
+# Debug Configuration
+# =============================================================================
+[debug]
+# Logging level: "trace", "debug", "info", "warn", "error"
+# - trace: Most verbose, shows everything
+# - debug: Detailed information for debugging
+# - info: General information (recommended)
+# - warn: Only warnings and errors
+# - error: Only errors
+log_level = "info"
+
+# Enable Vulkan validation layers (useful for graphics debugging)
+# Warning: This can significantly slow down rendering!
+vulkan_validation = false
+
+# Print frame timing information (ms per frame)
+show_frame_times = false
+
+# Print memory usage statistics
+show_memory_usage = false
+
+# Enable verbose logging for keyboard input
+verbose_input = false
+
+# Enable debug output for text rendering system
+debug_text_system = false
+
+# Log every change to the code state (typed characters, backspace, etc.)
+log_code_state = true
+
+# Show FPS counter on screen
+show_fps = false
+
+# Save debug logs to a file instead of console
+save_logs_to_file = false
+
+# Path for debug log file (if save_logs_to_file = true)
+log_file_path = "cargotap_debug.log"
+
+
+# =============================================================================
+# Color Scheme Configuration
+# =============================================================================
+# All colors are in [R, G, B, A] format with values from 0.0 to 1.0
+# R = Red, G = Green, B = Blue, A = Alpha (transparency)
+# Examples:
+#   [1.0, 0.0, 0.0, 1.0] = Bright red, fully opaque
+#   [0.0, 1.0, 0.0, 0.5] = Green, 50% transparent
+#   [1.0, 1.0, 1.0, 1.0] = White
+#   [0.0, 0.0, 0.0, 1.0] = Black
+
+[colors]
+# Background color (default: dark gray)
+background = [0.1, 0.1, 0.1, 1.0]
+
+# Default text color (default: light gray)
+text_default = [0.9, 0.9, 0.9, 1.0]
+
+# Color for correctly typed characters (default: green)
+text_correct = [0.0, 1.0, 0.0, 1.0]
+
+# Color for incorrectly typed characters (default: red)
+text_incorrect = [1.0, 0.0, 0.0, 1.0]
+
+# Color for the current character to be typed (default: yellow)
+text_current = [1.0, 1.0, 0.0, 1.0]
+
+# Color for header text (default: cyan)
+text_header = [0.0, 1.0, 1.0, 1.0]
+
+# Syntax highlighting colors
+# These are used when syntax_highlighting = true
+
+# Keywords (fn, let, mut, if, else, etc.)
+syntax_keyword = [1.0, 0.3, 0.5, 1.0]
+
+# Type names (String, Vec, i32, etc.)
+syntax_type = [0.3, 0.8, 1.0, 1.0]
+
+# String literals ("hello", 'x', etc.)
+syntax_string = [0.5, 1.0, 0.5, 1.0]
+
+# Comments (// and /* */)
+syntax_comment = [0.5, 0.5, 0.5, 1.0]
+
+# Numbers (42, 3.14, 0xFF, etc.)
+syntax_number = [1.0, 0.8, 0.4, 1.0]
+
+# Function names
+syntax_function = [0.8, 0.6, 1.0, 1.0]
+
+
+# =============================================================================
+# Usage Tips
+# =============================================================================
+#
+# Getting Started:
+# 1. Copy this file to 'config.toml' in the project root
+# 2. Adjust values as needed
+# 3. Run the application: cargo run
+# 4. Changes take effect on next restart
+#
+# Common Customizations:
+# - Larger text: Increase text.font_size to 96.0 or higher
+# - Different colors: Adjust values in [colors] section
+# - Practice your code: Set gameplay.custom_code_path to your file
+# - Debug issues: Set debug.log_level to "debug" or "trace"
+# - Performance testing: Set debug.show_frame_times = true
+#
+# Troubleshooting:
+# - If text doesn't appear, check that text.font_path is correct
+# - If custom code doesn't load, verify gameplay.custom_code_path exists
+# - For syntax errors, the app will use defaults and log a warning
+# - Enable debug.vulkan_validation for graphics troubleshooting
+#
+# =============================================================================

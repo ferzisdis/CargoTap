@@ -83,6 +83,7 @@ validation_*.txt
 
 # Local configuration files
 config.local.*
+config.toml
 
 # Build artifacts
 build/

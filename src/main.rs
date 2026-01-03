@@ -9,6 +9,7 @@ use winit::{
 };
 
 mod code_state;
+mod config;
 mod demo_code_state;
 mod input;
 mod renderer;
@@ -25,15 +26,40 @@ pub struct CargoTapApp {
     text_system: Option<Arc<Mutex<text::TextSystem>>>,
     input_handler: input::InputHandler,
     code_state: code_state::CodeState,
+    config: config::Config,
 }
 
 impl CargoTapApp {
     pub fn new(event_loop: &EventLoop<()>) -> Result<Self> {
+        // Load configuration
+        let config = config::Config::load();
+
+        // Validate configuration and log warnings
+        let warnings = config.validate();
+        for warning in warnings {
+            log::warn!("Config validation: {}", warning);
+        }
+
         let render_engine = renderer::VulkanRenderer::new(event_loop);
         let input_handler = input::InputHandler::new();
 
-        // Загрузка демо-кода вместо GitHub API на старте
-        let demo_code = include_str!("demo_code.rs").to_string();
+        // Load code based on configuration
+        let demo_code = if let Some(ref custom_path) = config.gameplay.custom_code_path {
+            match std::fs::read_to_string(custom_path) {
+                Ok(code) => {
+                    log::info!("Loaded custom code from: {}", custom_path);
+                    code
+                }
+                Err(e) => {
+                    log::error!("Failed to load custom code from {}: {}", custom_path, e);
+                    log::info!("Falling back to demo code");
+                    include_str!("demo_code.rs").to_string()
+                }
+            }
+        } else {
+            include_str!("demo_code.rs").to_string()
+        };
+
         let code_state = code_state::CodeState::new(demo_code);
 
         Ok(Self {
@@ -41,6 +67,7 @@ impl CargoTapApp {
             text_system: None,
             input_handler,
             code_state,
+            config,
         })
     }
 
@@ -60,33 +87,39 @@ impl CargoTapApp {
         // Create comprehensive demo with header and syntax highlighting
         let mut colored_text = ColoredText::new();
 
-        // Add a colorful header
+        // Add a colorful header (if enabled)
         colored_text.push_str("🦀 CargoTap ", [1.0, 0.5, 0.0, 1.0]); // Orange
-        colored_text.push_str("Live Demo\n", [0.0, 1.0, 1.0, 1.0]); // Cyan
+        colored_text.push_str("Live Demo\n", self.config.colors.text_header); // Use config color
         colored_text.push_str("─".repeat(30).as_str(), [0.5, 0.8, 1.0, 1.0]); // Light blue
-        colored_text.push('\n', [1.0, 1.0, 1.0, 1.0]);
+        colored_text.push('\n', self.config.colors.text_default);
 
-        // Add syntax highlighted code
+        // Add syntax highlighted code (if enabled in config)
         let display_text = self.code_state.get_full_code();
-        let syntax_highlighted = ColoredTextDemo::create_syntax_highlighted_rust(&display_text);
-        colored_text.chars.extend(syntax_highlighted.chars);
+        if self.config.text.syntax_highlighting {
+            let syntax_highlighted = ColoredTextDemo::create_syntax_highlighted_rust(&display_text);
+            colored_text.chars.extend(syntax_highlighted.chars);
+        } else {
+            colored_text.push_str(&display_text, self.config.colors.text_default);
+        }
 
-        // Add footer with rainbow text
-        colored_text.push('\n', [1.0, 1.0, 1.0, 1.0]);
-        colored_text.push_str("✨ Rainbow: ", [1.0, 1.0, 1.0, 1.0]);
-        let rainbow = ColoredTextDemo::create_rainbow_text("Per-character colors work!");
-        colored_text.chars.extend(rainbow.chars);
+        // Add footer with rainbow text (if enabled in config)
+        if self.config.text.rainbow_effects {
+            colored_text.push('\n', self.config.colors.text_default);
+            colored_text.push_str("✨ Rainbow: ", self.config.colors.text_default);
+            let rainbow = ColoredTextDemo::create_rainbow_text("Per-character colors work!");
+            colored_text.chars.extend(rainbow.chars);
+        }
 
         colored_text
     }
 
     fn initialize_text_system(&mut self) -> Result<()> {
         if self.text_system.is_none() {
-            // Define initial text render settings
+            // Define initial text render settings from config
             let initial_settings = TextRenderSettings {
-                color: [0.9, 0.9, 0.9, 1.0], // Light gray
-                font_size: 64.0,
-                position: [20.0, 50.0],
+                color: self.config.colors.text_default,
+                font_size: self.config.text.font_size,
+                position: [self.config.text.position_x, self.config.text.position_y],
             };
 
             let mut text_system = text::TextSystem::new(
@@ -192,42 +225,65 @@ impl CargoTapApp {
                             // Correct character typed - advance the code
                             let advanced_char = self.code_state.type_character();
                             if let Some(ch) = advanced_char {
-                                info!("✓ Correctly typed: '{}'", ch);
-                                info!(
-                                    "Progress: {:.1}% ({}/{})",
-                                    self.code_state.get_progress() * 100.0,
-                                    self.code_state.printed_code.len(),
-                                    self.code_state.get_total_length()
-                                );
+                                if self.config.debug.log_code_state {
+                                    info!("✓ Correctly typed: '{}'", ch);
+                                }
+                                if self.config.gameplay.show_statistics {
+                                    info!(
+                                        "Progress: {:.1}% ({}/{})",
+                                        self.code_state.get_progress() * 100.0,
+                                        self.code_state.printed_code.len(),
+                                        self.code_state.get_total_length()
+                                    );
+                                }
 
                                 if self.code_state.is_complete() {
                                     info!("🎉 Code typing completed!");
                                 } else if let Some(next_char) =
                                     self.code_state.peek_next_character()
                                 {
-                                    info!("Next character: '{}'", next_char);
+                                    if self.config.gameplay.show_next_char_hint {
+                                        info!("Next character: '{}'", next_char);
+                                    }
                                 }
                             }
                         } else {
-                            info!(
-                                "❌ Incorrect character! Expected '{}', got '{}'",
-                                expected_char, typed_char
-                            );
+                            if self.config.debug.log_code_state {
+                                info!(
+                                    "❌ Incorrect character! Expected '{}', got '{}'",
+                                    expected_char, typed_char
+                                );
+                            }
                         }
                     }
                 }
                 input::InputAction::Backspace => {
+                    // Check if backspace is allowed
+                    if !self.config.gameplay.allow_backspace {
+                        if self.config.debug.log_code_state {
+                            info!("⛔ Backspace is disabled in configuration");
+                        }
+                        self.input_handler.clear_last_action();
+                        return;
+                    }
+
                     // Move character back from printed to current
                     if let Some(ch) = self.code_state.backspace() {
-                        info!("⬅️ Backspace: moved '{}' back to current code", ch);
-                        info!(
-                            "Progress: {:.1}% ({}/{})",
-                            self.code_state.get_progress() * 100.0,
-                            self.code_state.printed_code.len(),
-                            self.code_state.get_total_length()
-                        );
-                        if let Some(next_char) = self.code_state.peek_next_character() {
-                            info!("Next character: '{}'", next_char);
+                        if self.config.debug.log_code_state {
+                            info!("⬅️ Backspace: moved '{}' back to current code", ch);
+                        }
+                        if self.config.gameplay.show_statistics {
+                            info!(
+                                "Progress: {:.1}% ({}/{})",
+                                self.code_state.get_progress() * 100.0,
+                                self.code_state.printed_code.len(),
+                                self.code_state.get_total_length()
+                            );
+                        }
+                        if self.config.gameplay.show_next_char_hint {
+                            if let Some(next_char) = self.code_state.peek_next_character() {
+                                info!("Next character: '{}'", next_char);
+                            }
                         }
                     }
                 }
@@ -237,16 +293,22 @@ impl CargoTapApp {
                         if expected_char == '\n' {
                             let advanced_char = self.code_state.type_character();
                             if let Some(_ch) = advanced_char {
-                                info!("✓ Correctly typed newline");
-                                info!(
-                                    "Progress: {:.1}% ({}/{})",
-                                    self.code_state.get_progress() * 100.0,
-                                    self.code_state.printed_code.len(),
-                                    self.code_state.get_total_length()
-                                );
+                                if self.config.debug.log_code_state {
+                                    info!("✓ Correctly typed newline");
+                                }
+                                if self.config.gameplay.show_statistics {
+                                    info!(
+                                        "Progress: {:.1}% ({}/{})",
+                                        self.code_state.get_progress() * 100.0,
+                                        self.code_state.printed_code.len(),
+                                        self.code_state.get_total_length()
+                                    );
+                                }
                             }
                         } else {
-                            info!("❌ Incorrect! Expected '{}', got newline", expected_char);
+                            if self.config.debug.log_code_state {
+                                info!("❌ Incorrect! Expected '{}', got newline", expected_char);
+                            }
                         }
                     }
                 }
@@ -262,22 +324,39 @@ impl CargoTapApp {
 }
 
 fn main() -> Result<()> {
-    simple_logger::init_with_level(log::Level::Info).unwrap();
+    // Load configuration early to set log level
+    let config = config::Config::load();
 
-    // Check for demo argument
+    // Initialize logger with configured level
+    simple_logger::init_with_level(config.get_log_level()).unwrap();
+
+    // Check for special commands
     let args: Vec<String> = std::env::args().collect();
+
+    // Generate default config file if requested
+    if args.len() > 1 && args[1] == "gen-config" {
+        match config::Config::save_default("config.toml") {
+            Ok(_) => {
+                println!("✓ Default configuration saved to config.toml");
+                println!("  Edit this file to customize CargoTap settings.");
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("✗ Failed to save config: {}", e);
+                return Err(e);
+            }
+        }
+    }
+
+    // Run demo mode if requested
     if args.len() > 1 && args[1] == "demo" {
         demo_code_state::run_demo();
         return Ok(());
     }
 
     info!("Starting CargoTap application");
-    info!("Loading demo code from demo_code.rs");
     info!("Tip: Run with 'cargo run demo' for command-line demo");
-
-    // Display the demo code content
-    let demo_code = include_str!("demo_code.rs");
-    info!("Demo code content:\n{}", demo_code);
+    info!("Tip: Run with 'cargo run gen-config' to generate config.toml");
 
     let event_loop = EventLoop::new()?;
     let mut app = CargoTapApp::new(&event_loop)?;

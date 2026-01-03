@@ -5,6 +5,7 @@ A modern typing game built with Rust and Vulkan, designed to help you practice t
 ## Features
 
 - **Typing Game Engine**: Interactive code typing game with real-time feedback
+- **Configuration System**: Comprehensive TOML-based configuration for all settings
 - **Code State Management**: Sophisticated tracking of typed vs. remaining code
 - **Vulkan-based Rendering**: High-performance graphics rendering using the Vulkan API
 - **Font Rendering**: Support for TrueType fonts with glyph analysis and positioning
@@ -13,11 +14,13 @@ A modern typing game built with Rust and Vulkan, designed to help you practice t
 - **Progress Tracking**: Real-time progress monitoring and statistics
 - **Backspace Support**: Ability to correct mistakes and move characters back
 - **Command-line Demo**: Interactive terminal-based demo mode
+- **Debug Options**: Extensive debugging and logging configuration
 
 ## Architecture
 
 The application consists of several key components:
 
+- **Config**: TOML-based configuration system for all application settings
 - **CodeState**: Manages the state of code being typed, tracking `current_code` (remaining) and `printed_code` (typed)
 - **VulkanRenderer**: Core graphics engine handling Vulkan initialization, device management, and rendering pipeline
 - **TextSystem**: Font loading, glyph rasterization, and text layout management with per-character color support
@@ -33,6 +36,7 @@ The application consists of several key components:
 - `bytemuck`: Safe transmutation between data types
 - `anyhow`: Error handling utilities
 - `log` & `simple_logger`: Logging infrastructure
+- `serde` & `toml`: Configuration file serialization
 
 ## Font Support
 
@@ -44,6 +48,13 @@ The application includes JetBrains Mono font for code display, providing:
 
 ## Usage
 
+### Generate Configuration File (First Time)
+```bash
+cargo run gen-config
+```
+
+This creates a `config.toml` file with all available settings and documentation.
+
 ### Graphical Mode (Default)
 ```bash
 cargo run
@@ -53,6 +64,36 @@ cargo run
 ```bash
 cargo run demo
 ```
+
+## Configuration
+
+CargoTap uses a `config.toml` file for configuration. See [CONFIG.md](CONFIG.md) for detailed documentation.
+
+### Quick Configuration
+
+Edit `config.toml` to customize:
+- **Window settings**: Size, title, FPS
+- **Text rendering**: Font, size, position, colors
+- **Gameplay**: Custom code files, backspace, difficulty
+- **Debug options**: Logging levels, performance metrics
+- **Color scheme**: All colors including syntax highlighting
+
+Example configuration:
+```toml
+[text]
+font_size = 80.0
+position_x = 50.0
+position_y = 100.0
+
+[gameplay]
+custom_code_path = "my_code.rs"
+allow_backspace = true
+
+[debug]
+log_level = "debug"
+```
+
+For complete documentation, see [CONFIG.md](CONFIG.md).
 
 ### Graphical Mode Features:
 1. Initialize the Vulkan rendering engine
@@ -75,8 +116,9 @@ cargo run demo
 CargoTap/
 ├── src/
 │   ├── main.rs              # Application entry point and game logic
-│   ├── code_state.rs        # Code state management (NEW)
-│   ├── demo_code_state.rs   # Command-line demo (NEW)
+│   ├── config.rs            # Configuration system
+│   ├── code_state.rs        # Code state management
+│   ├── demo_code_state.rs   # Command-line demo
 │   ├── renderer.rs          # Vulkan rendering engine
 │   ├── text.rs              # Text rendering system with colored text support
 │   ├── input.rs             # Enhanced input handling
@@ -86,6 +128,8 @@ CargoTap/
 │       └── colored_text_demo.rs  # Colored text demonstrations
 ├── fonts/
 │   └── JetBrainsMono-Light.ttf  # Font file
+├── config.toml.example      # Example configuration file
+├── CONFIG.md                # Configuration documentation
 └── Cargo.toml               # Project dependencies
 ```
 
