@@ -71,13 +71,13 @@ cargo run demo
 - **Command+J** (macOS) / **Ctrl+J** (Windows/Linux): Scroll view down by configured number of lines (view-only - doesn't change typing state)
 - **Backspace**: Undo last typed character (if enabled in config)
 
-**Important**: Scrolling changes what you SEE, not what you've TYPED. See [SCROLLING_FEATURE.md](SCROLLING_FEATURE.md) for details.
+**Important**: Scrolling changes what you SEE, not what you've TYPED. Your typing position stays the same.
 
 ## Configuration
 
-CargoTap uses a `config.toml` file for configuration. See [CONFIG.md](CONFIG.md) for detailed documentation.
+CargoTap uses a `config.toml` file for configuration.
 
-### Quick Configuration
+### Configuration Options
 
 Edit `config.toml` to customize:
 - **Window settings**: Size, title, FPS
@@ -102,7 +102,7 @@ scroll_lines = 5  # Lines to shift VIEW (not typing position)
 log_level = "debug"
 ```
 
-For complete documentation, see [CONFIG.md](CONFIG.md).
+Run `cargo run gen-config` to create a config file with all available options and inline documentation.
 
 ### Graphical Mode Features:
 1. Initialize the Vulkan rendering engine
@@ -204,71 +204,6 @@ if let Some(next) = code_state.peek_next_character() {
 - **Advanced Feedback**: Real-time typing technique analysis and suggestions
 - **Animation Effects**: Text animations and transitions using the colored text system
 
-## Colored Text System
+## License
 
-The application now features a sophisticated colored text rendering system that allows individual characters to have their own colors. This enables:
-
-### Features
-- **Per-character Colors**: Each character can have its own RGBA color value
-- **Syntax Highlighting**: Automatic color coding for Rust keywords, types, and operators
-- **Rainbow Effects**: Create colorful text patterns and gradients
-- **Visual Feedback**: Enhanced user interface with colored elements
-
-### API Usage
-
-#### Basic ColoredText Creation
-```rust
-use crate::text::{ColoredText, ColoredChar};
-
-// Create empty colored text
-let mut colored_text = ColoredText::new();
-
-// Add individual colored characters
-colored_text.push('H', [1.0, 0.0, 0.0, 1.0]); // Red 'H'
-colored_text.push('i', [0.0, 1.0, 0.0, 1.0]); // Green 'i'
-
-// Add multiple characters with same color
-colored_text.push_str("Hello", [0.0, 0.0, 1.0, 1.0]); // Blue "Hello"
-```
-
-#### Syntax Highlighting
-```rust
-use crate::examples::ColoredTextDemo;
-
-let code = r#"fn main() {
-    println!("Hello, World!");
-}"#;
-
-let highlighted = ColoredTextDemo::create_syntax_highlighted_rust(code);
-```
-
-#### Rainbow Text Effect
-```rust
-let rainbow = ColoredTextDemo::create_rainbow_text("RAINBOW TEXT");
-```
-
-#### Gradient Text Effect
-```rust
-let gradient = ColoredTextDemo::create_gradient_text(
-    "Gradient Text",
-    [1.0, 0.0, 0.0, 1.0], // Start: Red
-    [0.0, 0.0, 1.0, 1.0], // End: Blue
-);
-```
-
-### Color Format
-Colors use RGBA format with values from 0.0 to 1.0:
-- `[1.0, 0.0, 0.0, 1.0]` - Red, fully opaque
-- `[0.0, 1.0, 0.0, 0.5]` - Green, 50% transparent
-- `[0.5, 0.5, 0.5, 1.0]` - Gray, fully opaque
-
-### Integration with TextSystem
-```rust
-// Update text system with colored text
-text_system.update_text_with_settings(&colored_text)?;
-
-// Backward compatibility with plain strings
-text_system.update_text_with_settings_str("Plain text")?;
-```
-
-For detailed examples and advanced usage, see `COLORED_TEXT_USAGE.md` and the `examples/` directory.
+MIT
