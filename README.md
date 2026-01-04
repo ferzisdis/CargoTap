@@ -13,6 +13,7 @@ A modern typing game built with Rust and Vulkan, designed to help you practice t
 - **Multi-language Support**: Handles both ASCII and Unicode characters (including Cyrillic)
 - **Progress Tracking**: Real-time progress monitoring and statistics
 - **Backspace Support**: Ability to correct mistakes and move characters back
+- **Code Scrolling**: Navigate view through code using keyboard shortcuts (Command+J / Ctrl+J) - view-only, doesn't affect typing state
 - **Command-line Demo**: Interactive terminal-based demo mode
 - **Debug Options**: Extensive debugging and logging configuration
 
@@ -65,6 +66,13 @@ cargo run
 cargo run demo
 ```
 
+## Keyboard Shortcuts
+
+- **Command+J** (macOS) / **Ctrl+J** (Windows/Linux): Scroll view down by configured number of lines (view-only - doesn't change typing state)
+- **Backspace**: Undo last typed character (if enabled in config)
+
+**Important**: Scrolling changes what you SEE, not what you've TYPED. See [SCROLLING_FEATURE.md](SCROLLING_FEATURE.md) for details.
+
 ## Configuration
 
 CargoTap uses a `config.toml` file for configuration. See [CONFIG.md](CONFIG.md) for detailed documentation.
@@ -88,6 +96,7 @@ position_y = 100.0
 [gameplay]
 custom_code_path = "my_code.rs"
 allow_backspace = true
+scroll_lines = 5  # Lines to shift VIEW (not typing position)
 
 [debug]
 log_level = "debug"

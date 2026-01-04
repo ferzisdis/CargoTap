@@ -12,6 +12,8 @@ mod code_state;
 mod config;
 mod demo_code_state;
 mod input;
+mod progress_helper;
+mod progress_storage;
 mod renderer;
 mod text;
 
@@ -27,6 +29,10 @@ pub struct CargoTapApp {
     input_handler: input::InputHandler,
     code_state: code_state::CodeState,
     config: config::Config,
+    scroll_offset: usize, // Number of lines scrolled down (view offset)
+    progress_storage: progress_storage::ProgressStorage,
+    current_file_path: String,
+    current_file_hash: String,
 }
 
 impl CargoTapApp {
@@ -60,7 +66,34 @@ impl CargoTapApp {
             include_str!("demo_code.rs").to_string()
         };
 
-        let code_state = code_state::CodeState::new(demo_code);
+        // Load progress storage
+        let mut progress_storage = progress_storage::ProgressStorage::default();
+        let _ = progress_storage.load(); // Ignore errors on first run
+
+        // Compute file hash
+        let file_path = config
+            .gameplay
+            .custom_code_path
+            .clone()
+            .unwrap_or_else(|| "demo_code.rs".to_string());
+        let current_file_hash = progress_storage::compute_hash(&demo_code);
+
+        // Create code state and restore progress
+        let mut code_state = code_state::CodeState::new(demo_code);
+
+        // Restore saved position if available and file hasn't changed
+        if let Some(progress) = progress_storage.get_progress(&file_path) {
+            if progress.content_hash == current_file_hash {
+                log::info!("Restoring progress at position {}", progress.position);
+                for _ in 0..progress.position {
+                    if code_state.type_character().is_none() {
+                        break;
+                    }
+                }
+            } else {
+                log::info!("File changed, starting from beginning");
+            }
+        }
 
         Ok(Self {
             render_engine,
@@ -68,6 +101,10 @@ impl CargoTapApp {
             input_handler,
             code_state,
             config,
+            scroll_offset: 0,
+            progress_storage,
+            current_file_path: file_path,
+            current_file_hash,
         })
     }
 
@@ -93,8 +130,11 @@ impl CargoTapApp {
         colored_text.push_str("─".repeat(30).as_str(), [0.5, 0.8, 1.0, 1.0]); // Light blue
         colored_text.push('\n', self.config.colors.text_default);
 
+        // Get the full code and apply scroll offset (view-based scrolling)
+        let full_code = self.code_state.get_full_code();
+        let display_text = self.apply_scroll_offset(&full_code);
+
         // Add syntax highlighted code (if enabled in config)
-        let display_text = self.code_state.get_full_code();
         if self.config.text.syntax_highlighting {
             let syntax_highlighted = ColoredTextDemo::create_syntax_highlighted_rust(&display_text);
             colored_text.chars.extend(syntax_highlighted.chars);
@@ -111,6 +151,27 @@ impl CargoTapApp {
         }
 
         colored_text
+    }
+
+    /// Applies scroll offset to the text (skips first N lines for display)
+    /// This is a VIEW operation - it doesn't change the code state
+    fn apply_scroll_offset(&self, text: &str) -> String {
+        if self.scroll_offset == 0 {
+            return text.to_string();
+        }
+
+        let mut lines_skipped = 0;
+        let mut result = String::new();
+
+        for ch in text.chars() {
+            if lines_skipped >= self.scroll_offset {
+                result.push(ch);
+            } else if ch == '\n' {
+                lines_skipped += 1;
+            }
+        }
+
+        result
     }
 
     fn initialize_text_system(&mut self) -> Result<()> {
@@ -191,6 +252,26 @@ impl ApplicationHandler for CargoTapApp {
         _window_id: WindowId,
         event: WindowEvent,
     ) {
+        // Save progress before closing
+        if let WindowEvent::CloseRequested = &event {
+            let position = self.code_state.get_cursor_position();
+            self.progress_storage.save_progress(
+                self.current_file_path.clone(),
+                self.current_file_hash.clone(),
+                position,
+            );
+            if let Err(e) = self.progress_storage.save() {
+                log::error!("Failed to save progress on exit: {}", e);
+            } else {
+                log::info!("Progress saved at position {}", position);
+            }
+        }
+
+        // Track modifier keys (Command, Ctrl, etc.)
+        if let WindowEvent::ModifiersChanged(modifiers) = &event {
+            self.input_handler.update_modifiers(modifiers.state());
+        }
+
         // Handle keyboard input before passing to render engine
         if let WindowEvent::KeyboardInput {
             event: key_event, ..
@@ -219,6 +300,44 @@ impl CargoTapApp {
     fn handle_typing_input(&mut self) {
         if let Some(action) = self.input_handler.get_last_action() {
             match action {
+                input::InputAction::ScrollDown => {
+                    // Scroll down by the configured number of lines (view change only)
+                    let scroll_lines = self.config.gameplay.scroll_lines;
+
+                    // Count total lines in the full code
+                    let full_code = self.code_state.get_full_code();
+                    let total_lines = full_code.chars().filter(|&c| c == '\n').count();
+
+                    // Check if we can scroll more
+                    if self.scroll_offset + scroll_lines <= total_lines {
+                        self.scroll_offset += scroll_lines;
+                        info!(
+                            "⬇️ Scrolled view down {} line(s) (offset: {})",
+                            scroll_lines, self.scroll_offset
+                        );
+                    } else if self.scroll_offset < total_lines {
+                        // Scroll to the end
+                        let lines_scrolled = total_lines - self.scroll_offset;
+                        self.scroll_offset = total_lines;
+                        info!(
+                            "⬇️ Scrolled view down {} line(s) to end (offset: {})",
+                            lines_scrolled, self.scroll_offset
+                        );
+                    } else {
+                        info!("⬇️ Already at the end of the code");
+                    }
+
+                    // Note: Code state (printed_code) is unchanged - this is view only!
+                    if self.config.gameplay.show_statistics {
+                        info!(
+                            "Typing Progress: {:.1}% ({}/{}) | View Offset: {} lines",
+                            self.code_state.get_progress() * 100.0,
+                            self.code_state.printed_code.len(),
+                            self.code_state.get_total_length(),
+                            self.scroll_offset
+                        );
+                    }
+                }
                 input::InputAction::TypeCharacter(typed_char) => {
                     if let Some(expected_char) = self.code_state.peek_next_character() {
                         if *typed_char == expected_char {
@@ -363,6 +482,6 @@ fn main() -> Result<()> {
 
     info!("Starting event loop");
     event_loop.run_app(&mut app)?;
-
+    info!("Finished event loop");
     Ok(())
 }

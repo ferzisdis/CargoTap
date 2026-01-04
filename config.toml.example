@@ -79,6 +79,10 @@ strict_mode = false
 # Show a hint for the next character to type
 show_next_char_hint = true
 
+# Number of lines to scroll down when pressing Command+J (or Ctrl+J)
+# This allows you to skip ahead in the code without typing
+scroll_lines = 5
+
 
 # =============================================================================
 # Debug Configuration

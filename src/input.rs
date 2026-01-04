@@ -1,6 +1,6 @@
 use winit::{
     event::{ElementState, KeyEvent},
-    keyboard::{KeyCode, PhysicalKey},
+    keyboard::{KeyCode, ModifiersState, PhysicalKey},
 };
 
 #[derive(Debug, Clone)]
@@ -8,12 +8,14 @@ pub enum InputAction {
     TypeCharacter(char),
     Backspace,
     Enter,
+    ScrollDown,
     Other,
 }
 
 pub struct InputHandler {
     pub current_input: String,
     pub last_action: Option<InputAction>,
+    pub modifiers: ModifiersState,
 }
 
 impl InputHandler {
@@ -21,7 +23,12 @@ impl InputHandler {
         Self {
             current_input: String::new(),
             last_action: None,
+            modifiers: ModifiersState::empty(),
         }
+    }
+
+    pub fn update_modifiers(&mut self, modifiers: ModifiersState) {
+        self.modifiers = modifiers;
     }
 
     pub fn process_key_event(&mut self, input: KeyEvent) {
@@ -29,6 +36,14 @@ impl InputHandler {
 
         if let PhysicalKey::Code(key) = input.physical_key {
             if input.state == ElementState::Pressed {
+                // Check for Command+J (or Ctrl+J on other platforms) for scrolling
+                let is_cmd_or_ctrl = self.modifiers.super_key() || self.modifiers.control_key();
+
+                if key == KeyCode::KeyJ && is_cmd_or_ctrl {
+                    self.last_action = Some(InputAction::ScrollDown);
+                    return;
+                }
+
                 // Обработка специальных клавиш
                 match key {
                     KeyCode::Backspace => {

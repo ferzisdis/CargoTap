@@ -133,6 +133,9 @@ pub struct GameplayConfig {
 
     /// Show next character hint
     pub show_next_char_hint: bool,
+
+    /// Number of lines to scroll when using scroll shortcut (Command+J)
+    pub scroll_lines: usize,
 }
 
 impl Default for GameplayConfig {
@@ -144,6 +147,7 @@ impl Default for GameplayConfig {
             audio_feedback: false,
             strict_mode: false,
             show_next_char_hint: true,
+            scroll_lines: 5,
         }
     }
 }
