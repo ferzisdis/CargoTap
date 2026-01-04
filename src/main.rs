@@ -269,6 +269,7 @@ impl ApplicationHandler for CargoTapApp {
 
         // Track modifier keys (Command, Ctrl, etc.)
         if let WindowEvent::ModifiersChanged(modifiers) = &event {
+            log::info!("Modifiers changed: {:?}", modifiers.state());
             self.input_handler.update_modifiers(modifiers.state());
         }
 
@@ -279,6 +280,25 @@ impl ApplicationHandler for CargoTapApp {
         {
             // Process the key event with input handler
             self.input_handler.process_key_event(key_event.clone());
+
+            // Check if quit was requested (Command+Q)
+            if let Some(input::InputAction::Quit) = self.input_handler.get_last_action() {
+                // Save progress before quitting
+                let position = self.code_state.get_cursor_position();
+                self.progress_storage.save_progress(
+                    self.current_file_path.clone(),
+                    self.current_file_hash.clone(),
+                    position,
+                );
+                if let Err(e) = self.progress_storage.save() {
+                    log::error!("Failed to save progress on quit: {}", e);
+                } else {
+                    log::info!("Progress saved at position {} before quit", position);
+                }
+                // Exit the application
+                event_loop.exit();
+                return;
+            }
 
             // Handle typing logic based on input
             self.handle_typing_input();
@@ -430,6 +450,10 @@ impl CargoTapApp {
                             }
                         }
                     }
+                }
+                input::InputAction::Quit => {
+                    // Quit is handled in window_event before this function is called
+                    // This case exists to satisfy the exhaustive match requirement
                 }
                 input::InputAction::Other => {
                     // Handle other keys if needed

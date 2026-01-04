@@ -9,6 +9,7 @@ pub enum InputAction {
     Backspace,
     Enter,
     ScrollDown,
+    Quit,
     Other,
 }
 
@@ -36,6 +37,27 @@ impl InputHandler {
 
         if let PhysicalKey::Code(key) = input.physical_key {
             if input.state == ElementState::Pressed {
+                // Check for Command+Q to quit (may be intercepted by macOS)
+                if key == KeyCode::KeyQ && self.modifiers.super_key() {
+                    log::info!("Command+Q detected!");
+                    self.last_action = Some(InputAction::Quit);
+                    return;
+                }
+
+                // Check for Command+W to quit (better macOS support)
+                if key == KeyCode::KeyW && self.modifiers.super_key() {
+                    log::info!("Command+W detected - quitting!");
+                    self.last_action = Some(InputAction::Quit);
+                    return;
+                }
+
+                // Also check for Escape as an alternative quit method
+                if key == KeyCode::Escape {
+                    log::info!("Escape detected - quitting!");
+                    self.last_action = Some(InputAction::Quit);
+                    return;
+                }
+
                 // Check for Command+J (or Ctrl+J on other platforms) for scrolling
                 let is_cmd_or_ctrl = self.modifiers.super_key() || self.modifiers.control_key();
 
