@@ -83,6 +83,11 @@ show_next_char_hint = true
 # This allows you to skip ahead in the code without typing
 scroll_lines = 5
 
+# Duration of each typing session in minutes
+# After this time expires, you'll see your typing statistics
+# and can start a new session from where you left off
+session_duration_minutes = 3.0
+
 
 # =============================================================================
 # Debug Configuration

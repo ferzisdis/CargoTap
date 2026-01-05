@@ -4,6 +4,10 @@ A modern typing game built with Rust and Vulkan, designed to help you practice t
 
 ## Features
 
+- **Timed Session State**: Practice typing in timed sessions with configurable duration (default 3 minutes)
+- **Session Statistics**: Track typing speed (CPM/WPM), characters typed, and time elapsed for each session
+- **Continuous Progress**: After a session ends, start a new one and continue from where you left off
+- **Live Timer Display**: Real-time countdown timer showing remaining session time
 - **Typing Game Engine**: Interactive code typing game with real-time feedback
 - **Configuration System**: Comprehensive TOML-based configuration for all settings
 - **Code State Management**: Sophisticated tracking of typed vs. remaining code
@@ -66,10 +70,44 @@ cargo run
 cargo run demo
 ```
 
+## Session-Based Typing Practice
+
+CargoTap now includes a session system to help you practice typing in focused time blocks:
+
+### How It Works
+
+1. **Start Typing**: When you type your first character, a session begins automatically
+2. **Timer Countdown**: The remaining time is displayed at the top of the screen
+3. **Live Statistics**: See your current typing speed (CPM - Characters Per Minute) as you type
+4. **Session Complete**: When time expires, you'll see detailed statistics:
+   - Total time elapsed
+   - Total characters typed
+   - Characters per minute (CPM)
+   - Words per minute (WPM) - calculated as CPM / 5
+5. **Continue Practice**: Press **SPACE** to start a new session and continue typing from where you left off
+
+### Configuration
+
+Edit `config.toml` to customize session duration:
+
+```toml
+[gameplay]
+session_duration_minutes = 3.0  # Default is 3 minutes
+```
+
+### Session Statistics
+
+After each session, you'll see:
+- **Time**: Total session duration
+- **Characters**: Number of characters typed (start position → end position)
+- **Speed**: CPM (Characters Per Minute) and WPM (Words Per Minute)
+
 ## Keyboard Shortcuts
 
+- **SPACE**: Start a new typing session (when previous session is finished)
 - **Command+J** (macOS) / **Ctrl+J** (Windows/Linux): Scroll view down by configured number of lines (view-only - doesn't change typing state)
 - **Backspace**: Undo last typed character (if enabled in config)
+- **Command+W** or **Escape**: Quit the application
 
 **Important**: Scrolling changes what you SEE, not what you've TYPED. Your typing position stays the same.
 
@@ -97,6 +135,7 @@ position_y = 100.0
 custom_code_path = "my_code.rs"
 allow_backspace = true
 scroll_lines = 5  # Lines to shift VIEW (not typing position)
+session_duration_minutes = 5.0  # Duration for each typing session
 
 [debug]
 log_level = "debug"
@@ -111,6 +150,14 @@ Run `cargo run gen-config` to create a config file with all available options an
 4. Track your typing progress in real-time
 5. Provide visual feedback for correct/incorrect keystrokes
 6. Display progress statistics and completion status
+
+### Graphical Mode Session Flow:
+1. Launch the application with `cargo run`
+2. Start typing to begin your first session
+3. Watch the timer count down at the top of the screen
+4. See your typing speed (CPM) update in real-time
+5. When the session ends, review your statistics
+6. Press SPACE to start a new session and continue
 
 ### Demo Mode Features:
 - Interactive command-line typing practice
@@ -127,6 +174,7 @@ CargoTap/
 │   ├── main.rs              # Application entry point and game logic
 │   ├── config.rs            # Configuration system
 │   ├── code_state.rs        # Code state management
+│   ├── session_state.rs     # Session timer and statistics tracking
 │   ├── demo_code_state.rs   # Command-line demo
 │   ├── renderer.rs          # Vulkan rendering engine
 │   ├── text.rs              # Text rendering system with colored text support
@@ -193,16 +241,45 @@ if let Some(next) = code_state.peek_next_character() {
 }
 ```
 
+## Session State API
+
+The `SessionState` struct provides comprehensive session management:
+
+```rust
+// Create a session with 3 minute duration
+let mut session = SessionState::new(3.0);
+
+// Start the session at current position
+session.start(current_position);
+
+// Record typed characters
+session.record_char_typed();
+
+// Check if session is finished
+if session.update(current_position) {
+    // Session just finished
+    if let Some(stats) = session.last_stats() {
+        println!("CPM: {:.0}", stats.chars_per_minute);
+        println!("WPM: {:.0}", stats.words_per_minute);
+    }
+}
+
+// Start a new session continuing from current position
+session.start_new_session(current_position);
+```
+
 ## Future Enhancements
 
-- **Typing Metrics**: WPM calculation, accuracy statistics, and performance tracking
+- **Accuracy Tracking**: Track typing errors and accuracy percentage per session
+- **Session History**: Save and review past session statistics
 - **Difficulty Levels**: Multiple code complexity levels and programming languages
 - **Enhanced Syntax Highlighting**: More sophisticated color schemes and themes
 - **Leaderboards**: Score tracking and comparison features
-- **Custom Code**: Ability to load and practice with custom code files
-- **Multiple Languages**: Support for different programming languages
+- **Multiple Languages**: Support for different programming languages beyond Rust
 - **Advanced Feedback**: Real-time typing technique analysis and suggestions
 - **Animation Effects**: Text animations and transitions using the colored text system
+- **Pause/Resume**: Ability to pause sessions and resume later
+- **Custom Goals**: Set personal targets for CPM/WPM improvements
 
 ## License
 

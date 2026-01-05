@@ -136,6 +136,9 @@ pub struct GameplayConfig {
 
     /// Number of lines to scroll when using scroll shortcut (Command+J)
     pub scroll_lines: usize,
+
+    /// Session duration in minutes (timer for typing sessions)
+    pub session_duration_minutes: f64,
 }
 
 impl Default for GameplayConfig {
@@ -148,6 +151,7 @@ impl Default for GameplayConfig {
             strict_mode: false,
             show_next_char_hint: true,
             scroll_lines: 5,
+            session_duration_minutes: 3.0,
         }
     }
 }

@@ -15,6 +15,7 @@ mod input;
 mod progress_helper;
 mod progress_storage;
 mod renderer;
+mod session_state;
 mod text;
 
 use text::{ColoredText, TextRenderSettings};
@@ -33,6 +34,7 @@ pub struct CargoTapApp {
     progress_storage: progress_storage::ProgressStorage,
     current_file_path: String,
     current_file_hash: String,
+    session_state: session_state::SessionState,
 }
 
 impl CargoTapApp {
@@ -95,6 +97,10 @@ impl CargoTapApp {
             }
         }
 
+        // Initialize session state with configured duration
+        let session_state =
+            session_state::SessionState::new(config.gameplay.session_duration_minutes);
+
         Ok(Self {
             render_engine,
             text_system: None,
@@ -105,6 +111,7 @@ impl CargoTapApp {
             progress_storage,
             current_file_path: file_path,
             current_file_hash,
+            session_state,
         })
     }
 
@@ -129,6 +136,47 @@ impl CargoTapApp {
         colored_text.push_str("Live Demo\n", self.config.colors.text_header); // Use config color
         colored_text.push_str("─".repeat(30).as_str(), [0.5, 0.8, 1.0, 1.0]); // Light blue
         colored_text.push('\n', self.config.colors.text_default);
+
+        // Add session information
+        if self.session_state.is_finished() {
+            // Show session results
+            if let Some(stats) = self.session_state.last_stats() {
+                colored_text.push_str("⏰ SESSION COMPLETE! ", [1.0, 1.0, 0.0, 1.0]); // Yellow
+                colored_text.push('\n', self.config.colors.text_default);
+
+                let summary = format!(
+                    "Time: {:.1}s | Chars: {} | Speed: {:.0} CPM / {:.0} WPM\n",
+                    stats.time_elapsed_secs,
+                    stats.chars_typed,
+                    stats.chars_per_minute,
+                    stats.words_per_minute
+                );
+                colored_text.push_str(&summary, [0.0, 1.0, 0.0, 1.0]); // Green
+                colored_text.push_str("Press SPACE to start new session\n", [0.0, 1.0, 1.0, 1.0]); // Cyan
+                colored_text.push_str("─".repeat(30).as_str(), [0.5, 0.8, 1.0, 1.0]);
+                colored_text.push('\n', self.config.colors.text_default);
+            }
+        } else if self.session_state.is_active() {
+            // Show timer
+            let time_str = format!("⏱️  Time: {} ", self.session_state.format_time_remaining());
+            colored_text.push_str(&time_str, [1.0, 1.0, 0.0, 1.0]); // Yellow
+
+            // Show current stats
+            let current_pos = self.code_state.get_cursor_position();
+            let stats = self.session_state.current_stats(current_pos);
+            if stats.time_elapsed_secs > 0.0 {
+                let speed_str = format!("| {:.0} CPM ", stats.chars_per_minute);
+                colored_text.push_str(&speed_str, [0.0, 1.0, 0.0, 1.0]); // Green
+            }
+            colored_text.push('\n', self.config.colors.text_default);
+            colored_text.push_str("─".repeat(30).as_str(), [0.5, 0.8, 1.0, 1.0]);
+            colored_text.push('\n', self.config.colors.text_default);
+        } else {
+            // Session not started yet
+            colored_text.push_str("Start typing to begin session...\n", [0.7, 0.7, 0.7, 1.0]); // Gray
+            colored_text.push_str("─".repeat(30).as_str(), [0.5, 0.8, 1.0, 1.0]);
+            colored_text.push('\n', self.config.colors.text_default);
+        }
 
         // Get the full code and apply scroll offset (view-based scrolling)
         let full_code = self.code_state.get_full_code();
@@ -312,12 +360,47 @@ impl ApplicationHandler for CargoTapApp {
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        // Update session state and text every frame for smooth timer
+        if self.session_state.is_active() {
+            let current_position = self.code_state.get_cursor_position();
+            self.session_state.update(current_position);
+            self.update_text();
+        }
+
         self.render_engine.about_to_wait(_event_loop);
     }
 }
 
 impl CargoTapApp {
     fn handle_typing_input(&mut self) {
+        // Update session state and check if time expired
+        let current_position = self.code_state.get_cursor_position();
+        let session_just_finished = self.session_state.update(current_position);
+
+        if session_just_finished {
+            // Session just finished - stats are logged in session_state.update()
+            // User needs to press Space to start a new session
+            return;
+        }
+
+        // If session is finished, only allow Space to start new session
+        if self.session_state.is_finished() {
+            if let Some(action) = self.input_handler.get_last_action() {
+                match action {
+                    input::InputAction::TypeCharacter(' ') => {
+                        let current_pos = self.code_state.get_cursor_position();
+                        self.session_state.start_new_session(current_pos);
+                        info!("Starting new session from position {}", current_pos);
+                    }
+                    _ => {
+                        // Ignore all other input when session is finished
+                    }
+                }
+                self.input_handler.clear_last_action();
+            }
+            return;
+        }
+
         if let Some(action) = self.input_handler.get_last_action() {
             match action {
                 input::InputAction::ScrollDown => {
@@ -359,11 +442,19 @@ impl CargoTapApp {
                     }
                 }
                 input::InputAction::TypeCharacter(typed_char) => {
+                    // Start session on first character if not started
+                    if !self.session_state.is_active() {
+                        let current_pos = self.code_state.get_cursor_position();
+                        self.session_state.start(current_pos);
+                    }
+
                     if let Some(expected_char) = self.code_state.peek_next_character() {
                         if *typed_char == expected_char {
                             // Correct character typed - advance the code
                             let advanced_char = self.code_state.type_character();
                             if let Some(ch) = advanced_char {
+                                // Record character in session
+                                self.session_state.record_char_typed();
                                 if self.config.debug.log_code_state {
                                     info!("✓ Correctly typed: '{}'", ch);
                                 }
@@ -408,6 +499,8 @@ impl CargoTapApp {
 
                     // Move character back from printed to current
                     if let Some(ch) = self.code_state.backspace() {
+                        // Record backspace in session
+                        self.session_state.record_backspace();
                         if self.config.debug.log_code_state {
                             info!("⬅️ Backspace: moved '{}' back to current code", ch);
                         }
@@ -427,11 +520,20 @@ impl CargoTapApp {
                     }
                 }
                 input::InputAction::Enter => {
+                    // Start session on first character if not started
+                    if !self.session_state.is_active() {
+                        let current_pos = self.code_state.get_cursor_position();
+                        self.session_state.start(current_pos);
+                    }
+
                     // Handle enter key if it matches expected character
                     if let Some(expected_char) = self.code_state.peek_next_character() {
                         if expected_char == '\n' {
                             let advanced_char = self.code_state.type_character();
                             if let Some(_ch) = advanced_char {
+                                // Record character in session
+                                self.session_state.record_char_typed();
+
                                 if self.config.debug.log_code_state {
                                     info!("✓ Correctly typed newline");
                                 }
