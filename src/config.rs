@@ -139,6 +139,12 @@ pub struct GameplayConfig {
 
     /// Session duration in minutes (timer for typing sessions)
     pub session_duration_minutes: f64,
+
+    /// Auto-skip characters that cannot be typed on a US keyboard (emoji, Arabic, etc.)
+    pub auto_skip_untypeable: bool,
+
+    /// Hotkey to manually skip the current character (Ctrl+S or Cmd+S)
+    pub enable_manual_skip: bool,
 }
 
 impl Default for GameplayConfig {
@@ -152,6 +158,8 @@ impl Default for GameplayConfig {
             show_next_char_hint: true,
             scroll_lines: 5,
             session_duration_minutes: 3.0,
+            auto_skip_untypeable: true,
+            enable_manual_skip: true,
         }
     }
 }

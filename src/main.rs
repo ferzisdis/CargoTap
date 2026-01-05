@@ -8,6 +8,7 @@ use winit::{
     window::WindowId,
 };
 
+mod char_utils;
 mod code_state;
 mod config;
 mod demo_code_state;
@@ -441,11 +442,53 @@ impl CargoTapApp {
                         );
                     }
                 }
+                input::InputAction::SkipCharacter => {
+                    // Manual skip triggered by Ctrl+S or Cmd+S
+                    if self.config.gameplay.enable_manual_skip {
+                        if let Some(expected_char) = self.code_state.peek_next_character() {
+                            if let Some(description) =
+                                char_utils::get_untypeable_description(expected_char)
+                            {
+                                info!("⏭️  Manually skipping {}", description);
+                            } else {
+                                info!("⏭️  Manually skipping character: '{}'", expected_char);
+                            }
+
+                            // Skip the character
+                            self.code_state.type_character();
+                            self.session_state.record_char_typed();
+                        } else {
+                            info!("⏭️  No character to skip");
+                        }
+                    } else {
+                        if self.config.debug.log_code_state {
+                            info!("⛔ Manual skip is disabled in configuration");
+                        }
+                    }
+                }
                 input::InputAction::TypeCharacter(typed_char) => {
                     // Start session on first character if not started
                     if !self.session_state.is_active() {
                         let current_pos = self.code_state.get_cursor_position();
                         self.session_state.start(current_pos);
+                    }
+
+                    // Check if auto-skip is enabled and current character is untypeable
+                    if self.config.gameplay.auto_skip_untypeable {
+                        while let Some(expected_char) = self.code_state.peek_next_character() {
+                            if !char_utils::is_typeable_on_us_keyboard(expected_char) {
+                                // Auto-skip this untypeable character
+                                if let Some(description) =
+                                    char_utils::get_untypeable_description(expected_char)
+                                {
+                                    info!("⏭️  Auto-skipping {}", description);
+                                }
+                                self.code_state.type_character();
+                                self.session_state.record_char_typed();
+                            } else {
+                                break;
+                            }
+                        }
                     }
 
                     if let Some(expected_char) = self.code_state.peek_next_character() {
@@ -472,7 +515,19 @@ impl CargoTapApp {
                                 } else if let Some(next_char) =
                                     self.code_state.peek_next_character()
                                 {
-                                    if self.config.gameplay.show_next_char_hint {
+                                    // Warn if next character is untypeable and auto-skip is disabled
+                                    if !self.config.gameplay.auto_skip_untypeable
+                                        && !char_utils::is_typeable_on_us_keyboard(next_char)
+                                    {
+                                        if let Some(description) =
+                                            char_utils::get_untypeable_description(next_char)
+                                        {
+                                            info!("⚠️  Next character is {}", description);
+                                            if self.config.gameplay.enable_manual_skip {
+                                                info!("💡 Press Ctrl+S (or Cmd+S) to skip it");
+                                            }
+                                        }
+                                    } else if self.config.gameplay.show_next_char_hint {
                                         info!("Next character: '{}'", next_char);
                                     }
                                 }
@@ -550,6 +605,36 @@ impl CargoTapApp {
                             if self.config.debug.log_code_state {
                                 info!("❌ Incorrect! Expected '{}', got newline", expected_char);
                             }
+                        }
+                    }
+                }
+                input::InputAction::Tab => {
+                    // Tab key consumes all whitespace until next non-whitespace character
+                    let consumed = self.code_state.consume_whitespace();
+
+                    if consumed > 0 {
+                        // Record Tab press as single character in session (regardless of whitespace consumed)
+                        self.session_state.record_char_typed();
+
+                        if self.config.debug.log_code_state {
+                            info!("⇥ Tab: consumed {} whitespace character(s)", consumed);
+                        }
+                        if self.config.gameplay.show_statistics {
+                            info!(
+                                "Progress: {:.1}% ({}/{})",
+                                self.code_state.get_progress() * 100.0,
+                                self.code_state.printed_code.len(),
+                                self.code_state.get_total_length()
+                            );
+                        }
+                        if self.config.gameplay.show_next_char_hint {
+                            if let Some(next_char) = self.code_state.peek_next_character() {
+                                info!("Next character: '{}'", next_char);
+                            }
+                        }
+                    } else {
+                        if self.config.debug.log_code_state {
+                            info!("⇥ Tab: no whitespace to consume");
                         }
                     }
                 }

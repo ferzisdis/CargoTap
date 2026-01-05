@@ -17,6 +17,8 @@ A modern typing game built with Rust and Vulkan, designed to help you practice t
 - **Multi-language Support**: Handles both ASCII and Unicode characters (including Cyrillic)
 - **Progress Tracking**: Real-time progress monitoring and statistics
 - **Backspace Support**: Ability to correct mistakes and move characters back
+- **Tab Whitespace Consumption**: Press Tab to skip all whitespace (spaces, tabs, newlines) until the next non-whitespace character
+- **Untypeable Character Handling**: Auto-skip emoji, Arabic, CJK, and other characters that can't be typed on US keyboards, or manually skip with Ctrl+S / Cmd+S
 - **Code Scrolling**: Navigate view through code using keyboard shortcuts (Command+J / Ctrl+J) - view-only, doesn't affect typing state
 - **Command-line Demo**: Interactive terminal-based demo mode
 - **Debug Options**: Extensive debugging and logging configuration
@@ -105,11 +107,23 @@ After each session, you'll see:
 ## Keyboard Shortcuts
 
 - **SPACE**: Start a new typing session (when previous session is finished)
+- **Tab**: Consume all whitespace characters (spaces, tabs, newlines) until the next non-whitespace character
+- **Ctrl+S** / **Cmd+S**: Skip the current character (useful for emoji, Arabic, or other untypeable characters)
 - **Command+J** (macOS) / **Ctrl+J** (Windows/Linux): Scroll view down by configured number of lines (view-only - doesn't change typing state)
 - **Backspace**: Undo last typed character (if enabled in config)
 - **Command+W** or **Escape**: Quit the application
 
 **Important**: Scrolling changes what you SEE, not what you've TYPED. Your typing position stays the same.
+
+## Handling Untypeable Characters
+
+CargoTap can automatically handle characters that cannot be typed on a standard US keyboard (emoji 🦀, Arabic ا, Chinese 中, etc.):
+
+- **Auto-skip mode** (default: enabled): Automatically skips untypeable characters
+- **Manual skip**: Press **Ctrl+S** or **Cmd+S** to skip any character
+- **Transparent logging**: Shows which characters were skipped and why
+
+For detailed information, see [UNTYPEABLE_CHARACTERS.md](UNTYPEABLE_CHARACTERS.md).
 
 ## Configuration
 
@@ -136,6 +150,8 @@ custom_code_path = "my_code.rs"
 allow_backspace = true
 scroll_lines = 5  # Lines to shift VIEW (not typing position)
 session_duration_minutes = 5.0  # Duration for each typing session
+auto_skip_untypeable = true  # Auto-skip emoji, Arabic, CJK, etc.
+enable_manual_skip = true  # Allow Ctrl+S / Cmd+S to skip characters
 
 [debug]
 log_level = "debug"

@@ -88,6 +88,16 @@ scroll_lines = 5
 # and can start a new session from where you left off
 session_duration_minutes = 3.0
 
+# Automatically skip characters that cannot be typed on a US keyboard
+# This includes emoji (🦀), Arabic (ا), Chinese (中), Cyrillic (Ж),
+# Hebrew (א), mathematical symbols (∀), box-drawing (─), etc.
+# When enabled, these characters are automatically advanced without typing
+auto_skip_untypeable = true
+
+# Enable manual character skipping with Ctrl+S (or Cmd+S)
+# Useful for skipping any character you don't want to type
+enable_manual_skip = true
+
 
 # =============================================================================
 # Debug Configuration

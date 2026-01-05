@@ -94,6 +94,26 @@ impl CodeState {
     pub fn peek_next_chars(&self, count: usize) -> String {
         self.current_code.chars().take(count).collect()
     }
+
+    /// Consumes all whitespace characters (space, tab, newline) until the next non-whitespace character
+    /// Returns the number of whitespace characters consumed
+    pub fn consume_whitespace(&mut self) -> usize {
+        let mut consumed = 0;
+
+        while let Some(ch) = self.current_code.chars().next() {
+            if ch.is_whitespace() {
+                // Move the whitespace character from current_code to printed_code
+                self.current_code = self.current_code.chars().skip(1).collect();
+                self.printed_code.push(ch);
+                consumed += 1;
+            } else {
+                // Stop when we hit a non-whitespace character
+                break;
+            }
+        }
+
+        consumed
+    }
 }
 
 #[cfg(test)]
@@ -169,5 +189,47 @@ mod tests {
         // Peeking shouldn't change state
         assert_eq!(code_state.current_code, "hello");
         assert_eq!(code_state.printed_code, "");
+    }
+
+    #[test]
+    fn test_consume_whitespace() {
+        let mut code_state = CodeState::new("   \t\n  hello world".to_string());
+
+        // Consume all leading whitespace
+        let consumed = code_state.consume_whitespace();
+        assert_eq!(consumed, 7); // 3 spaces + 1 tab + 1 newline + 2 spaces
+        assert_eq!(code_state.current_code, "hello world");
+        assert_eq!(code_state.printed_code, "   \t\n  ");
+
+        // Next character should be non-whitespace
+        assert_eq!(code_state.peek_next_character(), Some('h'));
+    }
+
+    #[test]
+    fn test_consume_whitespace_no_whitespace() {
+        let mut code_state = CodeState::new("hello".to_string());
+
+        // No whitespace to consume
+        let consumed = code_state.consume_whitespace();
+        assert_eq!(consumed, 0);
+        assert_eq!(code_state.current_code, "hello");
+        assert_eq!(code_state.printed_code, "");
+    }
+
+    #[test]
+    fn test_consume_whitespace_after_typing() {
+        let mut code_state = CodeState::new("fn   main()".to_string());
+
+        // Type "fn"
+        code_state.type_character();
+        code_state.type_character();
+        assert_eq!(code_state.printed_code, "fn");
+        assert_eq!(code_state.current_code, "   main()");
+
+        // Consume whitespace
+        let consumed = code_state.consume_whitespace();
+        assert_eq!(consumed, 3);
+        assert_eq!(code_state.printed_code, "fn   ");
+        assert_eq!(code_state.current_code, "main()");
     }
 }

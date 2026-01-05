@@ -8,7 +8,9 @@ pub enum InputAction {
     TypeCharacter(char),
     Backspace,
     Enter,
+    Tab,
     ScrollDown,
+    SkipCharacter,
     Quit,
     Other,
 }
@@ -66,6 +68,12 @@ impl InputHandler {
                     return;
                 }
 
+                // Check for Command+S (or Ctrl+S) for skipping current character
+                if key == KeyCode::KeyS && is_cmd_or_ctrl {
+                    self.last_action = Some(InputAction::SkipCharacter);
+                    return;
+                }
+
                 // Обработка специальных клавиш
                 match key {
                     KeyCode::Backspace => {
@@ -75,6 +83,9 @@ impl InputHandler {
                     KeyCode::Enter => {
                         self.current_input.push('\n');
                         self.last_action = Some(InputAction::Enter);
+                    }
+                    KeyCode::Tab => {
+                        self.last_action = Some(InputAction::Tab);
                     }
                     _ => {
                         if let Some(text) = &input.text {
