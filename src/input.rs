@@ -10,6 +10,7 @@ pub enum InputAction {
     Enter,
     Tab,
     ScrollDown,
+    ScrollUp,
     SkipCharacter,
     Quit,
     Other,
@@ -65,6 +66,12 @@ impl InputHandler {
 
                 if key == KeyCode::KeyJ && is_cmd_or_ctrl {
                     self.last_action = Some(InputAction::ScrollDown);
+                    return;
+                }
+
+                // Check for Command+K (or Ctrl+K on other platforms) for scrolling up
+                if key == KeyCode::KeyK && is_cmd_or_ctrl {
+                    self.last_action = Some(InputAction::ScrollUp);
                     return;
                 }
 

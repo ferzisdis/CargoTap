@@ -442,6 +442,40 @@ impl CargoTapApp {
                         );
                     }
                 }
+                input::InputAction::ScrollUp => {
+                    // Scroll up by the configured number of lines (view change only)
+                    let scroll_lines = self.config.gameplay.scroll_lines;
+
+                    // Check if we can scroll up
+                    if self.scroll_offset >= scroll_lines {
+                        self.scroll_offset -= scroll_lines;
+                        info!(
+                            "⬆️ Scrolled view up {} line(s) (offset: {})",
+                            scroll_lines, self.scroll_offset
+                        );
+                    } else if self.scroll_offset > 0 {
+                        // Scroll to the beginning
+                        let lines_scrolled = self.scroll_offset;
+                        self.scroll_offset = 0;
+                        info!(
+                            "⬆️ Scrolled view up {} line(s) to beginning (offset: {})",
+                            lines_scrolled, self.scroll_offset
+                        );
+                    } else {
+                        info!("⬆️ Already at the beginning of the code");
+                    }
+
+                    // Note: Code state (printed_code) is unchanged - this is view only!
+                    if self.config.gameplay.show_statistics {
+                        info!(
+                            "Typing Progress: {:.1}% ({}/{}) | View Offset: {} lines",
+                            self.code_state.get_progress() * 100.0,
+                            self.code_state.printed_code.len(),
+                            self.code_state.get_total_length(),
+                            self.scroll_offset
+                        );
+                    }
+                }
                 input::InputAction::SkipCharacter => {
                     // Manual skip triggered by Ctrl+S or Cmd+S
                     if self.config.gameplay.enable_manual_skip {
