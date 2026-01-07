@@ -18,6 +18,9 @@ pub struct FileProgress {
     pub content_hash: String,
     /// Position where the user stopped (number of characters typed)
     pub position: usize,
+    /// Number of lines scrolled down (view offset)
+    #[serde(default)]
+    pub scroll_offset: usize,
     /// Optional: timestamp of last access
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_accessed: Option<u64>,
@@ -30,6 +33,23 @@ impl FileProgress {
             file_path,
             content_hash,
             position,
+            scroll_offset: 0,
+            last_accessed: None,
+        }
+    }
+
+    /// Creates a new FileProgress with scroll offset
+    pub fn with_scroll_offset(
+        file_path: String,
+        content_hash: String,
+        position: usize,
+        scroll_offset: usize,
+    ) -> Self {
+        Self {
+            file_path,
+            content_hash,
+            position,
+            scroll_offset,
             last_accessed: None,
         }
     }
@@ -45,6 +65,24 @@ impl FileProgress {
             file_path,
             content_hash,
             position,
+            scroll_offset: 0,
+            last_accessed: Some(timestamp),
+        }
+    }
+
+    /// Creates a new FileProgress with scroll offset and timestamp
+    pub fn with_scroll_offset_and_timestamp(
+        file_path: String,
+        content_hash: String,
+        position: usize,
+        scroll_offset: usize,
+        timestamp: u64,
+    ) -> Self {
+        Self {
+            file_path,
+            content_hash,
+            position,
+            scroll_offset,
             last_accessed: Some(timestamp),
         }
     }
@@ -115,6 +153,23 @@ impl ProgressStorage {
         self.progress_map.insert(file_path, progress);
     }
 
+    /// Saves or updates progress with scroll offset
+    pub fn save_progress_with_scroll_offset(
+        &mut self,
+        file_path: String,
+        content_hash: String,
+        position: usize,
+        scroll_offset: usize,
+    ) {
+        let progress = FileProgress::with_scroll_offset(
+            file_path.clone(),
+            content_hash,
+            position,
+            scroll_offset,
+        );
+        self.progress_map.insert(file_path, progress);
+    }
+
     /// Saves or updates progress with timestamp
     pub fn save_progress_with_timestamp(
         &mut self,
@@ -125,6 +180,25 @@ impl ProgressStorage {
     ) {
         let progress =
             FileProgress::with_timestamp(file_path.clone(), content_hash, position, timestamp);
+        self.progress_map.insert(file_path, progress);
+    }
+
+    /// Saves or updates progress with scroll offset and timestamp
+    pub fn save_progress_with_scroll_offset_and_timestamp(
+        &mut self,
+        file_path: String,
+        content_hash: String,
+        position: usize,
+        scroll_offset: usize,
+        timestamp: u64,
+    ) {
+        let progress = FileProgress::with_scroll_offset_and_timestamp(
+            file_path.clone(),
+            content_hash,
+            position,
+            scroll_offset,
+            timestamp,
+        );
         self.progress_map.insert(file_path, progress);
     }
 
@@ -191,6 +265,7 @@ mod tests {
         assert_eq!(progress.file_path, "test.txt");
         assert_eq!(progress.content_hash, "abc123");
         assert_eq!(progress.position, 42);
+        assert_eq!(progress.scroll_offset, 0);
         assert!(progress.last_accessed.is_none());
     }
 

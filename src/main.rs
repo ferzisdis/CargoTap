@@ -87,15 +87,21 @@ impl CargoTapApp {
         // Create code state and restore progress
         let mut code_state = code_state::CodeState::new(demo_code);
 
-        // Restore saved position if available and file hasn't changed
+        // Restore saved position and scroll offset if available and file hasn't changed
+        let mut scroll_offset = 0;
         if let Some(progress) = progress_storage.get_progress(&file_path) {
             if progress.content_hash == current_file_hash {
-                log::info!("Restoring progress at position {}", progress.position);
+                log::info!(
+                    "Restoring progress at position {} with scroll offset {}",
+                    progress.position,
+                    progress.scroll_offset
+                );
                 for _ in 0..progress.position {
                     if code_state.type_character().is_none() {
                         break;
                     }
                 }
+                scroll_offset = progress.scroll_offset;
             } else {
                 log::info!("File changed, starting from beginning");
             }
@@ -119,7 +125,7 @@ impl CargoTapApp {
             input_handler,
             code_state,
             config,
-            scroll_offset: 0,
+            scroll_offset,
             progress_storage,
             current_file_path: file_path,
             current_file_hash,
@@ -486,15 +492,20 @@ impl ApplicationHandler for CargoTapApp {
         // Save progress before closing
         if let WindowEvent::CloseRequested = &event {
             let position = self.code_state.get_cursor_position();
-            self.progress_storage.save_progress(
+            self.progress_storage.save_progress_with_scroll_offset(
                 self.current_file_path.clone(),
                 self.current_file_hash.clone(),
                 position,
+                self.scroll_offset,
             );
             if let Err(e) = self.progress_storage.save() {
                 log::error!("Failed to save progress on exit: {}", e);
             } else {
-                log::info!("Progress saved at position {}", position);
+                log::info!(
+                    "Progress saved at position {} with scroll offset {}",
+                    position,
+                    self.scroll_offset
+                );
             }
         }
 
@@ -525,15 +536,20 @@ impl ApplicationHandler for CargoTapApp {
 
                 // Save progress before quitting
                 let position = self.code_state.get_cursor_position();
-                self.progress_storage.save_progress(
+                self.progress_storage.save_progress_with_scroll_offset(
                     self.current_file_path.clone(),
                     self.current_file_hash.clone(),
                     position,
+                    self.scroll_offset,
                 );
                 if let Err(e) = self.progress_storage.save() {
                     log::error!("Failed to save progress on quit: {}", e);
                 } else {
-                    log::info!("Progress saved at position {} before quit", position);
+                    log::info!(
+                        "Progress saved at position {} with scroll offset {} before quit",
+                        position,
+                        self.scroll_offset
+                    );
                 }
                 // Exit the application
                 event_loop.exit();
