@@ -455,6 +455,7 @@ impl CargoTapApp {
     }
 
     fn try_initialize_text_pipeline(&mut self) {
+        let mut atlas_created = false;
         if let Some(text_system_arc) = &self.text_system {
             if let Ok(mut text_system) = text_system_arc.lock() {
                 if !text_system.is_pipeline_ready && self.render_engine.is_ready() {
@@ -465,10 +466,15 @@ impl CargoTapApp {
                             log::error!("Failed to create text atlas: {}", e);
                         } else {
                             info!("Text atlas created successfully");
+                            atlas_created = true;
                         }
                     }
                 }
             }
+        }
+
+        if atlas_created {
+            self.update_text();
         }
     }
 }
@@ -482,6 +488,9 @@ impl ApplicationHandler for CargoTapApp {
 
         // Try to initialize text pipeline if it wasn't created earlier
         self.try_initialize_text_pipeline();
+
+        // Ensure initial text is displayed showing "Start typing to begin session..."
+        self.update_text();
     }
     fn window_event(
         &mut self,
