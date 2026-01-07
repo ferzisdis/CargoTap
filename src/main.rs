@@ -16,6 +16,7 @@ mod input;
 mod progress_helper;
 mod progress_storage;
 mod renderer;
+mod session_history;
 mod session_state;
 mod text;
 
@@ -36,6 +37,8 @@ pub struct CargoTapApp {
     current_file_path: String,
     current_file_hash: String,
     session_state: session_state::SessionState,
+    session_history: session_history::SessionHistory,
+    show_statistics: bool, // Whether to show statistics screen
 }
 
 impl CargoTapApp {
@@ -102,6 +105,14 @@ impl CargoTapApp {
         let session_state =
             session_state::SessionState::new(config.gameplay.session_duration_minutes);
 
+        // Load session history
+        let mut session_history = session_history::SessionHistory::default();
+        if let Err(e) = session_history.load() {
+            log::warn!("Failed to load session history: {}", e);
+        } else {
+            log::info!("Loaded {} previous sessions", session_history.count());
+        }
+
         Ok(Self {
             render_engine,
             text_system: None,
@@ -113,6 +124,8 @@ impl CargoTapApp {
             current_file_path: file_path,
             current_file_hash,
             session_state,
+            session_history,
+            show_statistics: false,
         })
     }
 
@@ -129,6 +142,11 @@ impl CargoTapApp {
     }
 
     fn create_colored_text(&self) -> ColoredText {
+        // If showing statistics screen, display that instead
+        if self.show_statistics {
+            return self.create_statistics_screen();
+        }
+
         // Create comprehensive demo with header and syntax highlighting
         let mut colored_text = ColoredText::new();
 
@@ -146,11 +164,12 @@ impl CargoTapApp {
                 colored_text.push('\n', self.config.colors.text_default);
 
                 let summary = format!(
-                    "Time: {:.1}s | Chars: {} | Speed: {:.0} CPM / {:.0} WPM\n",
+                    "Time: {:.1}s | Chars: {} | Speed: {:.0} CPM / {:.0} WPM | Accuracy: {:.1}%\n",
                     stats.time_elapsed_secs,
                     stats.chars_typed,
                     stats.chars_per_minute,
-                    stats.words_per_minute
+                    stats.words_per_minute,
+                    stats.accuracy
                 );
                 colored_text.push_str(&summary, [0.0, 1.0, 0.0, 1.0]); // Green
                 colored_text.push_str("Press SPACE to start new session\n", [0.0, 1.0, 1.0, 1.0]); // Cyan
@@ -198,6 +217,169 @@ impl CargoTapApp {
             let rainbow = ColoredTextDemo::create_rainbow_text("Per-character colors work!");
             colored_text.chars.extend(rainbow.chars);
         }
+
+        // Add statistics hint
+        colored_text.push('\n', self.config.colors.text_default);
+        colored_text.push_str(
+            "Press Ctrl+T / Cmd+T to view statistics",
+            [0.5, 0.5, 0.5, 1.0],
+        );
+
+        colored_text
+    }
+
+    fn create_statistics_screen(&self) -> ColoredText {
+        let mut colored_text = ColoredText::new();
+
+        // Header
+        colored_text.push_str(
+            "╔═══════════════════════════════════════════════╗\n",
+            [0.0, 1.0, 1.0, 1.0],
+        );
+        colored_text.push_str(
+            "║          SESSION STATISTICS REPORT            ║\n",
+            [0.0, 1.0, 1.0, 1.0],
+        );
+        colored_text.push_str(
+            "╚═══════════════════════════════════════════════╝\n\n",
+            [0.0, 1.0, 1.0, 1.0],
+        );
+
+        if self.session_history.count() == 0 {
+            colored_text.push_str("No sessions recorded yet.\n", [0.7, 0.7, 0.7, 1.0]);
+            colored_text.push_str(
+                "Start typing to track your progress!\n\n",
+                [0.7, 0.7, 0.7, 1.0],
+            );
+        } else {
+            let summary = self.session_history.get_summary();
+            let recent_summary = self.session_history.get_recent_summary(5);
+            let (improved, improvement) = self.session_history.analyze_improvement(5);
+
+            // All-time stats
+            colored_text.push_str(
+                &format!("📊 ALL-TIME STATS ({} sessions)\n", summary.total_sessions),
+                [1.0, 1.0, 0.0, 1.0],
+            );
+            colored_text.push_str(
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
+                [0.5, 0.8, 1.0, 1.0],
+            );
+            colored_text.push_str(
+                &format!("  Total Characters: {}\n", summary.total_chars),
+                self.config.colors.text_default,
+            );
+            colored_text.push_str(
+                &format!("  Total Time: {:.1} minutes\n", summary.total_time / 60.0),
+                self.config.colors.text_default,
+            );
+            colored_text.push_str(
+                &format!(
+                    "  Avg Speed: {:.0} CPM / {:.0} WPM\n",
+                    summary.avg_cpm, summary.avg_wpm
+                ),
+                [0.0, 1.0, 0.0, 1.0],
+            );
+            colored_text.push_str(
+                &format!("  Avg Accuracy: {:.1}%\n", summary.avg_accuracy),
+                [0.0, 1.0, 0.0, 1.0],
+            );
+            colored_text.push_str(
+                &format!("  Total Errors: {}\n\n", summary.total_errors),
+                self.config.colors.text_default,
+            );
+
+            // Best performances
+            colored_text.push_str("🏆 BEST PERFORMANCES\n", [1.0, 0.84, 0.0, 1.0]);
+            colored_text.push_str(
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
+                [0.5, 0.8, 1.0, 1.0],
+            );
+            colored_text.push_str(
+                &format!(
+                    "  Best Speed: {:.0} CPM / {:.0} WPM\n",
+                    summary.best_cpm, summary.best_wpm
+                ),
+                [1.0, 0.5, 0.0, 1.0],
+            );
+            colored_text.push_str(
+                &format!("  Best Accuracy: {:.1}%\n\n", summary.best_accuracy),
+                [1.0, 0.5, 0.0, 1.0],
+            );
+
+            // Recent performance
+            if recent_summary.total_sessions > 0 {
+                colored_text.push_str(
+                    &format!(
+                        "📈 RECENT PERFORMANCE (last {} sessions)\n",
+                        recent_summary.total_sessions
+                    ),
+                    [0.5, 1.0, 0.5, 1.0],
+                );
+                colored_text.push_str(
+                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
+                    [0.5, 0.8, 1.0, 1.0],
+                );
+                colored_text.push_str(
+                    &format!(
+                        "  Avg Speed: {:.0} CPM / {:.0} WPM\n",
+                        recent_summary.avg_cpm, recent_summary.avg_wpm
+                    ),
+                    [0.0, 1.0, 0.0, 1.0],
+                );
+                colored_text.push_str(
+                    &format!("  Avg Accuracy: {:.1}%\n", recent_summary.avg_accuracy),
+                    [0.0, 1.0, 0.0, 1.0],
+                );
+
+                if improved {
+                    colored_text.push_str(
+                        &format!("  📊 Improvement: +{:.1}% 🎉\n", improvement),
+                        [0.0, 1.0, 0.5, 1.0],
+                    );
+                } else if improvement < 0.0 {
+                    colored_text.push_str(
+                        &format!("  📊 Change: {:.1}%\n", improvement),
+                        [1.0, 0.5, 0.0, 1.0],
+                    );
+                }
+                colored_text.push_str("\n", self.config.colors.text_default);
+            }
+
+            // Recent sessions
+            colored_text.push_str("📝 RECENT SESSIONS\n", [0.7, 0.7, 1.0, 1.0]);
+            colored_text.push_str(
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
+                [0.5, 0.8, 1.0, 1.0],
+            );
+            for (i, session) in self
+                .session_history
+                .get_recent_sessions(5)
+                .iter()
+                .enumerate()
+            {
+                colored_text.push_str(
+                    &format!(
+                        "  {}. {:.0} CPM / {:.0} WPM | {:.1}% acc | {} chars\n",
+                        i + 1,
+                        session.chars_per_minute,
+                        session.words_per_minute,
+                        session.accuracy,
+                        session.chars_typed
+                    ),
+                    self.config.colors.text_default,
+                );
+            }
+        }
+
+        colored_text.push_str(
+            "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
+            [0.5, 0.8, 1.0, 1.0],
+        );
+        colored_text.push_str(
+            "Press ESC to return | Press Ctrl+T / Cmd+T to view stats\n",
+            [0.7, 0.7, 0.7, 1.0],
+        );
 
         colored_text
     }
@@ -330,8 +512,17 @@ impl ApplicationHandler for CargoTapApp {
             // Process the key event with input handler
             self.input_handler.process_key_event(key_event.clone());
 
-            // Check if quit was requested (Command+Q)
+            // Check if quit was requested (ESC or Command+W)
             if let Some(input::InputAction::Quit) = self.input_handler.get_last_action() {
+                // If showing statistics, close them instead of quitting
+                if self.show_statistics {
+                    self.show_statistics = false;
+                    log::info!("📊 Closed statistics screen");
+                    self.input_handler.clear_last_action();
+                    self.update_text();
+                    return;
+                }
+
                 // Save progress before quitting
                 let position = self.code_state.get_cursor_position();
                 self.progress_storage.save_progress(
@@ -379,8 +570,18 @@ impl CargoTapApp {
         let session_just_finished = self.session_state.update(current_position);
 
         if session_just_finished {
-            // Session just finished - stats are logged in session_state.update()
-            // User needs to press Space to start a new session
+            // Session just finished - save to history
+            if let Some(stats) = self.session_state.last_stats() {
+                self.session_history.add_session(stats.clone());
+                if let Err(e) = self.session_history.save() {
+                    log::error!("Failed to save session history: {}", e);
+                } else {
+                    log::info!(
+                        "✅ Session saved to history (total: {})",
+                        self.session_history.count()
+                    );
+                }
+            }
             return;
         }
 
@@ -390,7 +591,8 @@ impl CargoTapApp {
                 match action {
                     input::InputAction::TypeCharacter(' ') => {
                         let current_pos = self.code_state.get_cursor_position();
-                        self.session_state.start_new_session(current_pos);
+                        self.session_state
+                            .start_new_session(current_pos, self.current_file_path.clone());
                         info!("Starting new session from position {}", current_pos);
                     }
                     _ => {
@@ -504,7 +706,8 @@ impl CargoTapApp {
                     // Start session on first character if not started
                     if !self.session_state.is_active() {
                         let current_pos = self.code_state.get_cursor_position();
-                        self.session_state.start(current_pos);
+                        self.session_state
+                            .start(current_pos, self.current_file_path.clone());
                     }
 
                     // Check if auto-skip is enabled and current character is untypeable
@@ -612,7 +815,8 @@ impl CargoTapApp {
                     // Start session on first character if not started
                     if !self.session_state.is_active() {
                         let current_pos = self.code_state.get_cursor_position();
-                        self.session_state.start(current_pos);
+                        self.session_state
+                            .start(current_pos, self.current_file_path.clone());
                     }
 
                     // Handle enter key if it matches expected character
@@ -678,6 +882,15 @@ impl CargoTapApp {
                 }
                 input::InputAction::Other => {
                     // Handle other keys if needed
+                }
+                input::InputAction::ShowStatistics => {
+                    // Toggle statistics screen
+                    self.show_statistics = !self.show_statistics;
+                    if self.show_statistics {
+                        info!("📊 Showing statistics screen");
+                    } else {
+                        info!("📊 Hiding statistics screen");
+                    }
                 }
             }
 

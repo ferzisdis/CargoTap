@@ -12,6 +12,7 @@ pub enum InputAction {
     ScrollDown,
     ScrollUp,
     SkipCharacter,
+    ShowStatistics,
     Quit,
     Other,
 }
@@ -54,15 +55,23 @@ impl InputHandler {
                     return;
                 }
 
-                // Also check for Escape as an alternative quit method
+                // Also check for Escape as an alternative quit method OR to close statistics
                 if key == KeyCode::Escape {
-                    log::info!("Escape detected - quitting!");
+                    // First check if we're showing stats - if so, just close them
+                    // Otherwise, quit the application
+                    // Note: This will be handled in the main application logic
                     self.last_action = Some(InputAction::Quit);
                     return;
                 }
 
                 // Check for Command+J (or Ctrl+J on other platforms) for scrolling
                 let is_cmd_or_ctrl = self.modifiers.super_key() || self.modifiers.control_key();
+
+                // Check for 'T' key with modifiers to show statistics
+                if key == KeyCode::KeyT && is_cmd_or_ctrl {
+                    self.last_action = Some(InputAction::ShowStatistics);
+                    return;
+                }
 
                 if key == KeyCode::KeyJ && is_cmd_or_ctrl {
                     self.last_action = Some(InputAction::ScrollDown);

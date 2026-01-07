@@ -3,6 +3,7 @@
 //! This module provides the SessionState struct which manages timed typing sessions,
 //! tracking progress, statistics, and time remaining.
 
+use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
 /// Represents the current state of a typing session
@@ -17,7 +18,7 @@ pub enum SessionStatus {
 }
 
 /// Statistics for a completed or active session
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionStats {
     /// Total characters typed during the session
     pub chars_typed: usize,
@@ -31,6 +32,14 @@ pub struct SessionStats {
     pub start_position: usize,
     /// Ending position in the code
     pub end_position: usize,
+    /// Number of errors (backspaces/corrections made)
+    pub errors: usize,
+    /// Accuracy percentage (0.0 to 100.0)
+    pub accuracy: f64,
+    /// Unix timestamp when session completed
+    pub timestamp: u64,
+    /// File path that was being typed
+    pub file_path: String,
 }
 
 impl SessionStats {
@@ -40,6 +49,8 @@ impl SessionStats {
         time_elapsed_secs: f64,
         start_position: usize,
         end_position: usize,
+        errors: usize,
+        file_path: String,
     ) -> Self {
         let chars_per_minute = if time_elapsed_secs > 0.0 {
             (chars_typed as f64 / time_elapsed_secs) * 60.0
@@ -49,6 +60,17 @@ impl SessionStats {
 
         let words_per_minute = chars_per_minute / 5.0; // Standard: 5 chars = 1 word
 
+        let accuracy = if chars_typed + errors > 0 {
+            (chars_typed as f64 / (chars_typed + errors) as f64) * 100.0
+        } else {
+            100.0
+        };
+
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
         Self {
             chars_typed,
             time_elapsed_secs,
@@ -56,6 +78,10 @@ impl SessionStats {
             words_per_minute,
             start_position,
             end_position,
+            errors,
+            accuracy,
+            timestamp,
+            file_path,
         }
     }
 
@@ -67,6 +93,7 @@ impl SessionStats {
              Time: {:.1}s\n\
              Characters: {} (pos {} → {})\n\
              Speed: {:.0} CPM / {:.0} WPM\n\
+             Accuracy: {:.1}% ({} errors)\n\
              ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\
              Press SPACE to start new session",
             self.time_elapsed_secs,
@@ -74,7 +101,9 @@ impl SessionStats {
             self.start_position,
             self.end_position,
             self.chars_per_minute,
-            self.words_per_minute
+            self.words_per_minute,
+            self.accuracy,
+            self.errors
         )
     }
 }
@@ -92,8 +121,12 @@ pub struct SessionState {
     start_position: usize,
     /// Number of characters typed in this session
     chars_typed_in_session: usize,
+    /// Number of errors in this session (backspaces)
+    errors_in_session: usize,
     /// Statistics from the last completed session
     last_session_stats: Option<SessionStats>,
+    /// File path being typed
+    file_path: String,
 }
 
 impl SessionState {
@@ -105,17 +138,21 @@ impl SessionState {
             duration_secs: duration_minutes * 60.0,
             start_position: 0,
             chars_typed_in_session: 0,
+            errors_in_session: 0,
             last_session_stats: None,
+            file_path: String::new(),
         }
     }
 
     /// Start the session (called when first character is typed)
-    pub fn start(&mut self, current_position: usize) {
+    pub fn start(&mut self, current_position: usize, file_path: String) {
         if self.status == SessionStatus::NotStarted {
             self.status = SessionStatus::Active;
             self.start_time = Some(Instant::now());
             self.start_position = current_position;
             self.chars_typed_in_session = 0;
+            self.errors_in_session = 0;
+            self.file_path = file_path;
             log::info!(
                 "🎯 Session started! Duration: {:.1} minutes (starting at position {})",
                 self.duration_secs / 60.0,
@@ -131,10 +168,13 @@ impl SessionState {
         }
     }
 
-    /// Record a backspace (decrements typed count)
+    /// Record a backspace (decrements typed count and increments errors)
     pub fn record_backspace(&mut self) {
-        if self.status == SessionStatus::Active && self.chars_typed_in_session > 0 {
-            self.chars_typed_in_session -= 1;
+        if self.status == SessionStatus::Active {
+            if self.chars_typed_in_session > 0 {
+                self.chars_typed_in_session -= 1;
+            }
+            self.errors_in_session += 1;
         }
     }
 
@@ -156,6 +196,8 @@ impl SessionState {
                     elapsed,
                     self.start_position,
                     current_position,
+                    self.errors_in_session,
+                    self.file_path.clone(),
                 ));
 
                 log::info!("⏰ Session time expired!");
@@ -208,11 +250,13 @@ impl SessionState {
     }
 
     /// Start a new session, continuing from the current position
-    pub fn start_new_session(&mut self, current_position: usize) {
+    pub fn start_new_session(&mut self, current_position: usize, file_path: String) {
         self.status = SessionStatus::NotStarted;
         self.start_time = None;
         self.start_position = current_position;
         self.chars_typed_in_session = 0;
+        self.errors_in_session = 0;
+        self.file_path = file_path;
         // Note: last_session_stats is kept so it can be displayed until next session completes
         log::info!(
             "🔄 Ready for new session (will start at position {})",
@@ -226,7 +270,9 @@ impl SessionState {
         self.start_time = None;
         self.start_position = 0;
         self.chars_typed_in_session = 0;
+        self.errors_in_session = 0;
         self.last_session_stats = None;
+        self.file_path = String::new();
     }
 
     /// Check if the session is active
@@ -246,6 +292,8 @@ impl SessionState {
             self.time_elapsed(),
             self.start_position,
             current_position,
+            self.errors_in_session,
+            self.file_path.clone(),
         )
     }
 
@@ -278,7 +326,7 @@ mod tests {
     #[test]
     fn test_start_session() {
         let mut session = SessionState::new(1.0);
-        session.start(0);
+        session.start(0, "test.rs".to_string());
         assert_eq!(session.status(), &SessionStatus::Active);
         assert!(session.is_active());
     }
@@ -286,7 +334,7 @@ mod tests {
     #[test]
     fn test_record_chars() {
         let mut session = SessionState::new(1.0);
-        session.start(0);
+        session.start(0, "test.rs".to_string());
         session.record_char_typed();
         session.record_char_typed();
         session.record_char_typed();
@@ -298,19 +346,20 @@ mod tests {
     #[test]
     fn test_backspace() {
         let mut session = SessionState::new(1.0);
-        session.start(0);
+        session.start(0, "test.rs".to_string());
         session.record_char_typed();
         session.record_char_typed();
         session.record_backspace();
 
         let stats = session.current_stats(1);
         assert_eq!(stats.chars_typed, 1);
+        assert_eq!(stats.errors, 1);
     }
 
     #[test]
     fn test_time_remaining() {
         let mut session = SessionState::new(1.0 / 60.0); // 1 second
-        session.start(0);
+        session.start(0, "test.rs".to_string());
         thread::sleep(Duration::from_millis(100));
         let remaining = session.time_remaining();
         assert!(remaining < 1.0 && remaining > 0.8);
@@ -324,25 +373,28 @@ mod tests {
 
     #[test]
     fn test_session_stats() {
-        let stats = SessionStats::new(120, 60.0, 0, 120);
+        let stats = SessionStats::new(120, 60.0, 0, 120, 5, "test.rs".to_string());
         assert_eq!(stats.chars_typed, 120);
         assert_eq!(stats.chars_per_minute, 120.0);
         assert_eq!(stats.words_per_minute, 24.0);
+        assert_eq!(stats.errors, 5);
+        assert!((stats.accuracy - 96.0).abs() < 0.1);
     }
 
     #[test]
     fn test_new_session_continuation() {
         let mut session = SessionState::new(1.0);
-        session.start(0);
+        session.start(0, "test.rs".to_string());
         session.record_char_typed();
         session.record_char_typed();
 
         // Finish session
         session.status = SessionStatus::Finished;
-        session.last_session_stats = Some(SessionStats::new(2, 60.0, 0, 2));
+        session.last_session_stats =
+            Some(SessionStats::new(2, 60.0, 0, 2, 0, "test.rs".to_string()));
 
         // Start new session
-        session.start_new_session(2);
+        session.start_new_session(2, "test.rs".to_string());
         assert_eq!(session.status(), &SessionStatus::NotStarted);
         assert!(session.last_stats().is_some());
     }

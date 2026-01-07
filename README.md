@@ -5,9 +5,11 @@ A modern typing game built with Rust and Vulkan, designed to help you practice t
 ## Features
 
 - **Timed Session State**: Practice typing in timed sessions with configurable duration (default 3 minutes)
-- **Session Statistics**: Track typing speed (CPM/WPM), characters typed, and time elapsed for each session
+- **Session Statistics & History**: Track typing speed (CPM/WPM), accuracy, errors, and time for each session with persistent storage
+- **Statistics Dashboard**: View detailed statistics including all-time bests, recent performance, and progress trends (Ctrl+T / Cmd+T)
+- **Performance Tracking**: Automatic tracking of accuracy percentage, typing errors, and improvement over time
 - **Continuous Progress**: After a session ends, start a new one and continue from where you left off
-- **Live Timer Display**: Real-time countdown timer showing remaining session time
+- **Live Timer Display**: Real-time countdown timer showing remaining session time with live CPM updates
 - **Typing Game Engine**: Interactive code typing game with real-time feedback
 - **Configuration System**: Comprehensive TOML-based configuration for all settings
 - **Code State Management**: Sophisticated tracking of typed vs. remaining code
@@ -29,6 +31,8 @@ The application consists of several key components:
 
 - **Config**: TOML-based configuration system for all application settings
 - **CodeState**: Manages the state of code being typed, tracking `current_code` (remaining) and `printed_code` (typed)
+- **SessionState**: Manages timed typing sessions with statistics tracking (CPM, WPM, accuracy, errors)
+- **SessionHistory**: Persistent storage and analysis of completed sessions with performance trends
 - **VulkanRenderer**: Core graphics engine handling Vulkan initialization, device management, and rendering pipeline
 - **TextSystem**: Font loading, glyph rasterization, and text layout management with per-character color support
 - **ColoredText System**: Advanced text rendering with individual character colors for syntax highlighting
@@ -107,11 +111,13 @@ After each session, you'll see:
 ## Keyboard Shortcuts
 
 - **SPACE**: Start a new typing session (when previous session is finished)
+- **Ctrl+T** / **Cmd+T**: Toggle statistics dashboard to view session history and performance trends
 - **Tab**: Consume all whitespace characters (spaces, tabs, newlines) until the next non-whitespace character
 - **Ctrl+S** / **Cmd+S**: Skip the current character (useful for emoji, Arabic, or other untypeable characters)
 - **Command+J** (macOS) / **Ctrl+J** (Windows/Linux): Scroll view down by configured number of lines (view-only - doesn't change typing state)
 - **Backspace**: Undo last typed character (if enabled in config)
-- **Command+W** or **Escape**: Quit the application
+- **Escape**: Close statistics screen (if open) or quit the application
+- **Command+W**: Quit the application
 
 **Important**: Scrolling changes what you SEE, not what you've TYPED. Your typing position stays the same.
 
@@ -171,9 +177,15 @@ Run `cargo run gen-config` to create a config file with all available options an
 1. Launch the application with `cargo run`
 2. Start typing to begin your first session
 3. Watch the timer count down at the top of the screen
-4. See your typing speed (CPM) update in real-time
-5. When the session ends, review your statistics
+4. See your typing speed (CPM) and accuracy update in real-time
+5. When the session ends, review your statistics (CPM, WPM, accuracy, errors)
 6. Press SPACE to start a new session and continue
+7. Press **Ctrl+T** / **Cmd+T** to view your statistics dashboard with:
+   - All-time performance statistics
+   - Best performances (highest speed and accuracy)
+   - Recent session performance (last 5 sessions)
+   - Improvement trends and analysis
+   - Individual session details
 
 ### Demo Mode Features:
 - Interactive command-line typing practice
@@ -191,6 +203,8 @@ CargoTap/
 │   ├── config.rs            # Configuration system
 │   ├── code_state.rs        # Code state management
 │   ├── session_state.rs     # Session timer and statistics tracking
+│   ├── session_history.rs   # Session history storage and analysis
+│   ├── progress_storage.rs  # File progress persistence
 │   ├── demo_code_state.rs   # Command-line demo
 │   ├── renderer.rs          # Vulkan rendering engine
 │   ├── text.rs              # Text rendering system with colored text support
@@ -257,7 +271,7 @@ if let Some(next) = code_state.peek_next_character() {
 }
 ```
 
-## Session State API
+## SessionState API
 
 The `SessionState` struct provides comprehensive session management:
 
@@ -266,10 +280,11 @@ The `SessionState` struct provides comprehensive session management:
 let mut session = SessionState::new(3.0);
 
 // Start the session at current position
-session.start(current_position);
+session.start(current_position, file_path);
 
-// Record typed characters
+// Record typed characters and errors
 session.record_char_typed();
+session.record_backspace(); // Records an error
 
 // Check if session is finished
 if session.update(current_position) {
@@ -277,17 +292,52 @@ if session.update(current_position) {
     if let Some(stats) = session.last_stats() {
         println!("CPM: {:.0}", stats.chars_per_minute);
         println!("WPM: {:.0}", stats.words_per_minute);
+        println!("Accuracy: {:.1}%", stats.accuracy);
+        println!("Errors: {}", stats.errors);
     }
 }
 
 // Start a new session continuing from current position
-session.start_new_session(current_position);
+session.start_new_session(current_position, file_path);
+```
+
+## SessionHistory API
+
+The `SessionHistory` struct provides persistent statistics storage and analysis:
+
+```rust
+// Create and load session history
+let mut history = SessionHistory::default();
+history.load()?;
+
+// Add a completed session
+history.add_session(session_stats);
+history.save()?;
+
+// Get recent sessions
+let recent = history.get_recent_sessions(5);
+
+// Get summary statistics
+let summary = history.get_summary();
+println!("Total sessions: {}", summary.total_sessions);
+println!("Average CPM: {:.0}", summary.avg_cpm);
+println!("Best WPM: {:.0}", summary.best_wpm);
+println!("Average accuracy: {:.1}%", summary.avg_accuracy);
+
+// Analyze improvement
+let (improved, percentage) = history.analyze_improvement(5);
+if improved {
+    println!("You've improved by {:.1}%!", percentage);
+}
+
+// Get recent performance summary
+let recent_summary = history.get_recent_summary(5);
 ```
 
 ## Future Enhancements
 
-- **Accuracy Tracking**: Track typing errors and accuracy percentage per session
-- **Session History**: Save and review past session statistics
+- **Visual Charts**: Graph performance trends over time with visual charts
+- **Export Statistics**: Export session history to CSV or JSON for external analysis
 - **Difficulty Levels**: Multiple code complexity levels and programming languages
 - **Enhanced Syntax Highlighting**: More sophisticated color schemes and themes
 - **Leaderboards**: Score tracking and comparison features
