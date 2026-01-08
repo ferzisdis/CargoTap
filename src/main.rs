@@ -477,6 +477,25 @@ impl CargoTapApp {
             self.update_text();
         }
     }
+
+    /// Helper method to save session statistics to history
+    /// Returns true if statistics were successfully saved
+    fn save_session_statistics(&mut self) -> bool {
+        if let Some(stats) = self.session_state.last_stats() {
+            self.session_history.add_session(stats.clone());
+            if let Err(e) = self.session_history.save() {
+                log::error!("Failed to save session history: {}", e);
+                return false;
+            } else {
+                log::info!(
+                    "✅ Session saved to history (total: {})",
+                    self.session_history.count()
+                );
+                return true;
+            }
+        }
+        false
+    }
 }
 
 impl ApplicationHandler for CargoTapApp {
@@ -580,7 +599,13 @@ impl ApplicationHandler for CargoTapApp {
         // Update session state and text every frame for smooth timer
         if self.session_state.is_active() {
             let current_position = self.code_state.get_cursor_position();
-            self.session_state.update(current_position);
+            let session_just_finished = self.session_state.update(current_position);
+
+            if session_just_finished {
+                log::info!("Session just finished (timer expired)!");
+                self.save_session_statistics();
+            }
+
             self.update_text();
         }
 
@@ -595,18 +620,8 @@ impl CargoTapApp {
         let session_just_finished = self.session_state.update(current_position);
 
         if session_just_finished {
-            // Session just finished - save to history
-            if let Some(stats) = self.session_state.last_stats() {
-                self.session_history.add_session(stats.clone());
-                if let Err(e) = self.session_history.save() {
-                    log::error!("Failed to save session history: {}", e);
-                } else {
-                    log::info!(
-                        "✅ Session saved to history (total: {})",
-                        self.session_history.count()
-                    );
-                }
-            }
+            log::info!("Session just finished!");
+            self.save_session_statistics();
             return;
         }
 

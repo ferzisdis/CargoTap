@@ -296,15 +296,6 @@ impl TextSystem {
             }
 
             let glyph_id = self.font.glyph_id(ch);
-            let glyph = glyph_id.with_scale_and_position(scale, point(cursor_x, cursor_y));
-
-            if let Some(outlined) = scaled_font.outline_glyph(glyph.clone()) {
-                let bounds = outlined.px_bounds();
-                println!(
-                    "Character '{}' at ({:.1}, {:.1}) bounds: ({:.1}, {:.1}) to ({:.1}, {:.1})",
-                    ch, cursor_x, cursor_y, bounds.min.x, bounds.min.y, bounds.max.x, bounds.max.y
-                );
-            }
 
             cursor_x += scaled_font.h_advance(glyph_id);
         }
