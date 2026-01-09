@@ -40,13 +40,30 @@ pub fn handle_typing_input(app: &mut CargoTapApp) {
 
 fn handle_finished_session(app: &mut CargoTapApp) {
     if let Some(action) = app.input_handler.get_last_action() {
-        if let input::InputAction::TypeCharacter(' ') = action {
-            let current_pos = app.code_state.get_cursor_position();
-            app.session_state
-                .start_new_session(current_pos, app.current_file_path.clone());
-            info!("Starting new session from position {}", current_pos);
+        match action {
+            input::InputAction::TypeCharacter(' ') => {
+                let current_pos = app.code_state.get_cursor_position();
+                app.session_state
+                    .start_new_session(current_pos, app.current_file_path.clone());
+                info!("Starting new session from position {}", current_pos);
+                app.input_handler.clear_last_action();
+            }
+            input::InputAction::ShowStatistics => {
+                handle_show_statistics(app);
+                app.input_handler.clear_last_action();
+            }
+            input::InputAction::ScrollDown => {
+                handle_scroll_down(app);
+                app.input_handler.clear_last_action();
+            }
+            input::InputAction::ScrollUp => {
+                handle_scroll_up(app);
+                app.input_handler.clear_last_action();
+            }
+            _ => {
+                app.input_handler.clear_last_action();
+            }
         }
-        app.input_handler.clear_last_action();
     }
 }
 
