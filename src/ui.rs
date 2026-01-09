@@ -3,6 +3,10 @@ use crate::examples::colored_text_demo::ColoredTextDemo;
 use crate::text::ColoredText;
 
 pub fn create_colored_text(app: &CargoTapApp) -> ColoredText {
+    if app.file_selection_mode {
+        return create_file_selection_screen(app);
+    }
+
     if app.show_statistics {
         return create_statistics_screen(app);
     }
@@ -11,7 +15,24 @@ pub fn create_colored_text(app: &CargoTapApp) -> ColoredText {
 
     colored_text.push_str("🦀 CargoTap ", [1.0, 0.5, 0.0, 1.0]);
     colored_text.push_str("Live Demo\n", app.config.colors.text_header);
-    colored_text.push_str("─".repeat(30).as_str(), [0.5, 0.8, 1.0, 1.0]);
+
+    colored_text.push_str(
+        &format!("📄 File: {} ", app.current_file_path),
+        [0.5, 1.0, 1.0, 1.0],
+    );
+
+    let progress_percent = app.code_state.get_progress() * 100.0;
+    let cursor_pos = app.code_state.get_cursor_position();
+    let total_len = app.code_state.get_total_length();
+    colored_text.push_str(
+        &format!(
+            "| Progress: {}/{} ({:.1}%)\n",
+            cursor_pos, total_len, progress_percent
+        ),
+        [0.0, 1.0, 0.5, 1.0],
+    );
+
+    colored_text.push_str("─".repeat(50).as_str(), [0.5, 0.8, 1.0, 1.0]);
     colored_text.push('\n', app.config.colors.text_default);
 
     if app.session_state.is_finished() {
@@ -70,7 +91,7 @@ pub fn create_colored_text(app: &CargoTapApp) -> ColoredText {
 
     colored_text.push('\n', app.config.colors.text_default);
     colored_text.push_str(
-        "Press Ctrl+T / Cmd+T to view statistics",
+        "Press Cmd+P to change file | Press Ctrl+T / Cmd+T to view statistics",
         [0.5, 0.5, 0.5, 1.0],
     );
 
@@ -223,6 +244,64 @@ pub fn create_statistics_screen(app: &CargoTapApp) -> ColoredText {
     colored_text.push_str(
         "Press ESC to return | Press Ctrl+T / Cmd+T to view stats\n",
         [0.7, 0.7, 0.7, 1.0],
+    );
+
+    colored_text
+}
+
+pub fn create_file_selection_screen(app: &CargoTapApp) -> ColoredText {
+    let mut colored_text = ColoredText::new();
+
+    colored_text.push_str(
+        "╔═══════════════════════════════════════════════╗\n",
+        [0.0, 1.0, 1.0, 1.0],
+    );
+    colored_text.push_str(
+        "║              FILE SELECTION MODE              ║\n",
+        [0.0, 1.0, 1.0, 1.0],
+    );
+    colored_text.push_str(
+        "╚═══════════════════════════════════════════════╝\n\n",
+        [0.0, 1.0, 1.0, 1.0],
+    );
+
+    colored_text.push_str("Enter file path to load:\n\n", [1.0, 1.0, 1.0, 1.0]);
+
+    colored_text.push_str("📝 ", [1.0, 0.84, 0.0, 1.0]);
+    colored_text.push_str(&app.file_input_buffer, [0.0, 1.0, 0.0, 1.0]);
+    colored_text.push_str("█", [0.0, 1.0, 0.0, 1.0]);
+
+    colored_text.push_str("\n\n", app.config.colors.text_default);
+    colored_text.push_str(
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
+        [0.5, 0.8, 1.0, 1.0],
+    );
+
+    colored_text.push_str("Current file: ", [0.7, 0.7, 0.7, 1.0]);
+    colored_text.push_str(&app.current_file_path, [0.5, 1.0, 1.0, 1.0]);
+    colored_text.push_str("\n\n", app.config.colors.text_default);
+
+    colored_text.push_str("Instructions:\n", [1.0, 1.0, 0.0, 1.0]);
+    colored_text.push_str(
+        "  • Edit the file path below (pre-filled with current path)\n",
+        [0.7, 0.7, 0.7, 1.0],
+    );
+    colored_text.push_str("  • Press ENTER to load the file\n", [0.7, 0.7, 0.7, 1.0]);
+    colored_text.push_str("  • Press ESC to cancel\n", [0.7, 0.7, 0.7, 1.0]);
+    colored_text.push_str(
+        "  • Use BACKSPACE to delete characters\n\n",
+        [0.7, 0.7, 0.7, 1.0],
+    );
+
+    colored_text.push_str("Examples:\n", [0.0, 1.0, 0.5, 1.0]);
+    colored_text.push_str("  • src/main.rs\n", app.config.colors.text_default);
+    colored_text.push_str(
+        "  • /absolute/path/to/file.rs\n",
+        app.config.colors.text_default,
+    );
+    colored_text.push_str(
+        "  • ../other_project/code.rs\n",
+        app.config.colors.text_default,
     );
 
     colored_text

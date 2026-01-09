@@ -13,6 +13,7 @@ pub enum InputAction {
     ScrollUp,
     SkipCharacter,
     ShowStatistics,
+    ChangeFile,
     Quit,
     Other,
 }
@@ -52,6 +53,13 @@ impl InputHandler {
                 if key == KeyCode::KeyW && self.modifiers.super_key() {
                     log::info!("Command+W detected - quitting!");
                     self.last_action = Some(InputAction::Quit);
+                    return;
+                }
+
+                // Check for Command+P to change file
+                if key == KeyCode::KeyP && self.modifiers.super_key() {
+                    log::info!("Command+P detected - changing file!");
+                    self.last_action = Some(InputAction::ChangeFile);
                     return;
                 }
 

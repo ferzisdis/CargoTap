@@ -5,6 +5,11 @@ use crate::char_utils;
 use crate::input;
 
 pub fn handle_typing_input(app: &mut CargoTapApp) {
+    if app.file_selection_mode {
+        handle_file_selection_input(app);
+        return;
+    }
+
     let current_position = app.code_state.get_cursor_position();
     let session_just_finished = app.session_state.update(current_position);
 
@@ -31,6 +36,7 @@ pub fn handle_typing_input(app: &mut CargoTapApp) {
             input::InputAction::Enter => handle_enter(app),
             input::InputAction::Tab => handle_tab(app),
             input::InputAction::ShowStatistics => handle_show_statistics(app),
+            input::InputAction::ChangeFile => handle_change_file(app),
             input::InputAction::Quit | input::InputAction::Other => {}
         }
 
@@ -58,6 +64,10 @@ fn handle_finished_session(app: &mut CargoTapApp) {
             }
             input::InputAction::ScrollUp => {
                 handle_scroll_up(app);
+                app.input_handler.clear_last_action();
+            }
+            input::InputAction::ChangeFile => {
+                handle_change_file(app);
                 app.input_handler.clear_last_action();
             }
             _ => {
@@ -308,5 +318,53 @@ fn handle_show_statistics(app: &mut CargoTapApp) {
         info!("📊 Showing statistics screen");
     } else {
         info!("📊 Hiding statistics screen");
+    }
+}
+
+fn handle_change_file(app: &mut CargoTapApp) {
+    app.file_selection_mode = true;
+    app.file_input_buffer = app.current_file_path.clone();
+    info!(
+        "📂 Entering file selection mode with current path: {}",
+        app.current_file_path
+    );
+}
+
+fn handle_file_selection_input(app: &mut CargoTapApp) {
+    if let Some(action) = app.input_handler.get_last_action() {
+        match action {
+            input::InputAction::TypeCharacter(ch) => {
+                app.file_input_buffer.push(*ch);
+            }
+            input::InputAction::Backspace => {
+                app.file_input_buffer.pop();
+            }
+            input::InputAction::Enter => {
+                let file_path = app.file_input_buffer.trim().to_string();
+                if !file_path.is_empty() {
+                    info!("📂 Attempting to load file: {}", file_path);
+                    match app.load_file(file_path.clone()) {
+                        Ok(_) => {
+                            info!("✅ Successfully loaded file: {}", file_path);
+                            app.file_selection_mode = false;
+                            app.file_input_buffer.clear();
+                        }
+                        Err(e) => {
+                            info!("❌ Failed to load file: {}", e);
+                        }
+                    }
+                } else {
+                    info!("❌ File path cannot be empty");
+                }
+            }
+            input::InputAction::Quit => {
+                info!("📂 Exiting file selection mode");
+                app.file_selection_mode = false;
+                app.file_input_buffer.clear();
+            }
+            _ => {}
+        }
+
+        app.input_handler.clear_last_action();
     }
 }

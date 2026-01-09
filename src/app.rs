@@ -25,6 +25,8 @@ pub struct CargoTapApp {
     pub session_state: session_state::SessionState,
     pub session_history: session_history::SessionHistory,
     pub show_statistics: bool,
+    pub file_selection_mode: bool,
+    pub file_input_buffer: String,
 }
 
 impl CargoTapApp {
@@ -109,6 +111,8 @@ impl CargoTapApp {
             session_state,
             session_history,
             show_statistics: false,
+            file_selection_mode: false,
+            file_input_buffer: String::new(),
         })
     }
 
@@ -220,5 +224,50 @@ impl CargoTapApp {
                 self.scroll_offset
             );
         }
+    }
+
+    pub fn load_file(&mut self, file_path: String) -> Result<()> {
+        let code = match std::fs::read_to_string(&file_path) {
+            Ok(code) => {
+                log::info!("Successfully loaded file: {}", file_path);
+                code
+            }
+            Err(e) => {
+                log::error!("Failed to load file {}: {}", file_path, e);
+                return Err(anyhow::anyhow!("Failed to load file: {}", e));
+            }
+        };
+
+        self.save_progress();
+
+        let new_file_hash = progress_storage::compute_hash(&code);
+        self.current_file_path = file_path.clone();
+        self.current_file_hash = new_file_hash;
+
+        self.code_state = code_state::CodeState::new(code);
+        self.scroll_offset = 0;
+
+        if let Some(progress) = self.progress_storage.get_progress(&file_path) {
+            if progress.content_hash == self.current_file_hash {
+                log::info!(
+                    "Restoring progress at position {} with scroll offset {}",
+                    progress.position,
+                    progress.scroll_offset
+                );
+                for _ in 0..progress.position {
+                    if self.code_state.type_character().is_none() {
+                        break;
+                    }
+                }
+                self.scroll_offset = progress.scroll_offset;
+            } else {
+                log::info!("File changed, starting from beginning");
+            }
+        }
+
+        let current_pos = self.code_state.get_cursor_position();
+        self.session_state.start_new_session(current_pos, file_path);
+
+        Ok(())
     }
 }
