@@ -471,7 +471,7 @@ impl TextSystem {
     fn should_save_debug_atlas(&self) -> bool {
         env::var("CARGOTAP_DEBUG_ATLAS")
             .map(|val| val.to_lowercase() == "true" || val == "1")
-            .unwrap_or(true) // Default to true for now, can be changed to false later
+            .unwrap_or(false) // Default to true for now, can be changed to false later
     }
 
     /// Save the atlas as a bitmap image for debugging purposes
