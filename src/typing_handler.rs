@@ -323,10 +323,17 @@ fn handle_show_statistics(app: &mut CargoTapApp) {
 
 fn handle_change_file(app: &mut CargoTapApp) {
     app.file_selection_mode = true;
-    app.file_input_buffer = app.current_file_path.clone();
+
+    // Pre-fill with last opened file if available, otherwise use current file
+    app.file_input_buffer = app
+        .progress_storage
+        .get_last_opened_file()
+        .cloned()
+        .unwrap_or_else(|| app.current_file_path.clone());
+
     info!(
-        "📂 Entering file selection mode with current path: {}",
-        app.current_file_path
+        "📂 Entering file selection mode with path: {}",
+        app.file_input_buffer
     );
 }
 

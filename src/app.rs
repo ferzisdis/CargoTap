@@ -41,30 +41,38 @@ impl CargoTapApp {
         let render_engine = renderer::VulkanRenderer::new(event_loop);
         let input_handler = input::InputHandler::new();
 
-        let demo_code = if let Some(ref custom_path) = config.gameplay.custom_code_path {
-            match std::fs::read_to_string(custom_path) {
+        let mut progress_storage = progress_storage::ProgressStorage::default();
+        let _ = progress_storage.load();
+
+        // Determine which file to load: last opened > config > demo
+        let file_path = if let Some(last_opened) = progress_storage.get_last_opened_file() {
+            log::info!("Restoring last opened file: {}", last_opened);
+            last_opened.clone()
+        } else if let Some(ref custom_path) = config.gameplay.custom_code_path {
+            log::info!("Using config file: {}", custom_path);
+            custom_path.clone()
+        } else {
+            log::info!("Using demo code");
+            "demo_code.rs".to_string()
+        };
+
+        // Load the file content
+        let demo_code = if file_path == "demo_code.rs" {
+            include_str!("demo_code.rs").to_string()
+        } else {
+            match std::fs::read_to_string(&file_path) {
                 Ok(code) => {
-                    log::info!("Loaded custom code from: {}", custom_path);
+                    log::info!("Successfully loaded file from: {}", file_path);
                     code
                 }
                 Err(e) => {
-                    log::error!("Failed to load custom code from {}: {}", custom_path, e);
+                    log::error!("Failed to load file from {}: {}", file_path, e);
                     log::info!("Falling back to demo code");
                     include_str!("demo_code.rs").to_string()
                 }
             }
-        } else {
-            include_str!("demo_code.rs").to_string()
         };
 
-        let mut progress_storage = progress_storage::ProgressStorage::default();
-        let _ = progress_storage.load();
-
-        let file_path = config
-            .gameplay
-            .custom_code_path
-            .clone()
-            .unwrap_or_else(|| "demo_code.rs".to_string());
         let current_file_hash = progress_storage::compute_hash(&demo_code);
 
         let mut code_state = code_state::CodeState::new(demo_code);
@@ -96,6 +104,12 @@ impl CargoTapApp {
             log::warn!("Failed to load session history: {}", e);
         } else {
             log::info!("Loaded {} previous sessions", session_history.count());
+        }
+
+        // Save the current file as last opened
+        progress_storage.set_last_opened_file(file_path.clone());
+        if let Err(e) = progress_storage.save() {
+            log::error!("Failed to save last opened file: {}", e);
         }
 
         Ok(Self {
@@ -243,6 +257,12 @@ impl CargoTapApp {
         let new_file_hash = progress_storage::compute_hash(&code);
         self.current_file_path = file_path.clone();
         self.current_file_hash = new_file_hash;
+
+        self.progress_storage
+            .set_last_opened_file(file_path.clone());
+        if let Err(e) = self.progress_storage.save() {
+            log::error!("Failed to save last opened file: {}", e);
+        }
 
         self.code_state = code_state::CodeState::new(code);
         self.scroll_offset = 0;

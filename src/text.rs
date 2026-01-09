@@ -281,7 +281,6 @@ impl TextSystem {
         let mut cursor_y = 0.0;
         let line_height = scaled_font.height();
 
-        println!("Rendering text: {}", text);
         println!("Font height: {}", line_height);
 
         for ch in text.chars() {

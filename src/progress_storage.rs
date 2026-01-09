@@ -93,6 +93,9 @@ impl FileProgress {
 pub struct ProgressStorage {
     /// Map of file paths to their progress
     progress_map: HashMap<String, FileProgress>,
+    /// Last opened file path
+    #[serde(default)]
+    pub last_opened_file: Option<String>,
     /// Path to the storage file
     #[serde(skip)]
     storage_path: PathBuf,
@@ -103,6 +106,7 @@ impl ProgressStorage {
     pub fn new<P: AsRef<Path>>(storage_path: P) -> Self {
         Self {
             progress_map: HashMap::new(),
+            last_opened_file: None,
             storage_path: storage_path.as_ref().to_path_buf(),
         }
     }
@@ -126,16 +130,22 @@ impl ProgressStorage {
         }
 
         let contents = fs::read_to_string(&self.storage_path)?;
-        let loaded: HashMap<String, FileProgress> = serde_json::from_str(&contents)
+        let loaded: ProgressStorage = serde_json::from_str(&contents)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
-        self.progress_map = loaded;
+        self.progress_map = loaded.progress_map;
+        self.last_opened_file = loaded.last_opened_file;
         Ok(())
     }
 
     /// Saves progress to disk
     pub fn save(&self) -> io::Result<()> {
-        let json = serde_json::to_string_pretty(&self.progress_map)
+        let storage_data = serde_json::json!({
+            "progress_map": self.progress_map,
+            "last_opened_file": self.last_opened_file,
+        });
+
+        let json = serde_json::to_string_pretty(&storage_data)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
         // Create parent directory if it doesn't exist
@@ -234,6 +244,16 @@ impl ProgressStorage {
     /// Gets all file paths being tracked
     pub fn get_all_files(&self) -> Vec<String> {
         self.progress_map.keys().cloned().collect()
+    }
+
+    /// Sets the last opened file path
+    pub fn set_last_opened_file(&mut self, file_path: String) {
+        self.last_opened_file = Some(file_path);
+    }
+
+    /// Gets the last opened file path
+    pub fn get_last_opened_file(&self) -> Option<&String> {
+        self.last_opened_file.as_ref()
     }
 }
 
