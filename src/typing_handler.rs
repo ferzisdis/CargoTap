@@ -270,6 +270,15 @@ fn handle_enter(app: &mut CargoTapApp) {
                 if app.config.debug.log_code_state {
                     info!("✓ Correctly typed newline");
                 }
+
+                let consumed = app.code_state.consume_whitespace();
+                if consumed > 0 && app.config.debug.log_code_state {
+                    info!(
+                        "⇥ Auto-consumed {} whitespace character(s) after newline",
+                        consumed
+                    );
+                }
+
                 if app.config.gameplay.show_statistics {
                     info!(
                         "Progress: {:.1}% ({}/{})",
