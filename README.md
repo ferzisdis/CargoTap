@@ -19,6 +19,7 @@ A modern typing game built with Rust and Vulkan, designed to help you practice t
 - **Multi-language Support**: Handles both ASCII and Unicode characters (including Cyrillic)
 - **Progress Tracking**: Real-time progress monitoring and statistics
 - **Backspace Support**: Ability to correct mistakes and move characters back
+- **Line Numbers**: IDE-style line numbers displayed in the left column with current line highlighting in bright color
 - **Tab Whitespace Consumption**: Press Tab to skip all whitespace (spaces, tabs, newlines) until the next non-whitespace character
 - **Untypeable Character Handling**: Auto-skip emoji, Arabic, CJK, and other characters that can't be typed on US keyboards, or manually skip with Ctrl+S / Cmd+S
 - **Code Scrolling**: Navigate view through code using keyboard shortcuts (Command+J / Ctrl+J) - view-only, doesn't affect typing state

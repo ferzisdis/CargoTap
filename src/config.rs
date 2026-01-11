@@ -96,6 +96,9 @@ pub struct TextConfig {
 
     /// Enable rainbow effects
     pub rainbow_effects: bool,
+
+    /// Show line numbers in the left column
+    pub show_line_numbers: bool,
 }
 
 impl Default for TextConfig {
@@ -109,6 +112,7 @@ impl Default for TextConfig {
             char_spacing: 0.0,
             syntax_highlighting: true,
             rainbow_effects: true,
+            show_line_numbers: true,
         }
     }
 }

@@ -54,6 +54,9 @@ syntax_highlighting = true
 # Enable rainbow effects in header text
 rainbow_effects = true
 
+# Show line numbers in the left column (like in an IDE)
+show_line_numbers = true
+
 
 # =============================================================================
 # Gameplay Configuration

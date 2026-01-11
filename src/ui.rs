@@ -2,6 +2,62 @@ use crate::app::CargoTapApp;
 use crate::examples::colored_text_demo::ColoredTextDemo;
 use crate::text::ColoredText;
 
+fn find_current_line_number(text: &str) -> Option<usize> {
+    let mut line_num = 1;
+    for ch in text.chars() {
+        if ch == '|' {
+            return Some(line_num);
+        }
+        if ch == '\n' {
+            line_num += 1;
+        }
+    }
+    None
+}
+
+fn add_line_numbers_to_colored_text(
+    colored_text: &mut ColoredText,
+    text: &str,
+    line_number_color: [f32; 4],
+    current_line_color: [f32; 4],
+    separator_color: [f32; 4],
+    scroll_offset: usize,
+    current_line: Option<usize>,
+) {
+    let lines: Vec<&str> = text.split('\n').collect();
+    let total_lines = lines.len();
+    let start_line = scroll_offset + 1;
+    let num_digits = (total_lines + scroll_offset).to_string().len().max(3);
+
+    for (i, line) in lines.iter().enumerate() {
+        let line_num = start_line + i;
+        let line_num_str = format!("{:>width$}", line_num, width = num_digits);
+
+        let is_current = current_line.map_or(false, |cl| cl == line_num);
+        let num_color = if is_current {
+            current_line_color
+        } else {
+            line_number_color
+        };
+
+        for ch in line_num_str.chars() {
+            colored_text.push(ch, num_color);
+        }
+
+        colored_text.push(' ', separator_color);
+        colored_text.push('│', separator_color);
+        colored_text.push(' ', separator_color);
+
+        for ch in line.chars() {
+            colored_text.push(ch, [1.0, 1.0, 1.0, 1.0]);
+        }
+
+        if i < lines.len() - 1 {
+            colored_text.push('\n', [1.0, 1.0, 1.0, 1.0]);
+        }
+    }
+}
+
 pub fn create_colored_text(app: &CargoTapApp) -> ColoredText {
     if app.file_selection_mode {
         return create_file_selection_screen(app);
@@ -75,11 +131,72 @@ pub fn create_colored_text(app: &CargoTapApp) -> ColoredText {
     let full_code = app.code_state.get_full_code();
     let display_text = apply_scroll_offset(&full_code, app.scroll_offset);
 
-    if app.config.text.syntax_highlighting {
-        let syntax_highlighted = ColoredTextDemo::create_syntax_highlighted_rust(&display_text);
-        colored_text.chars.extend(syntax_highlighted.chars);
+    if app.config.text.show_line_numbers {
+        let line_number_color = [0.5, 0.5, 0.6, 1.0];
+        let current_line_color = [1.0, 0.85, 0.2, 1.0]; // Bright yellow/gold
+        let separator_color = [0.4, 0.4, 0.5, 1.0];
+
+        let current_line =
+            find_current_line_number(&display_text).map(|line| line + app.scroll_offset);
+
+        if app.config.text.syntax_highlighting {
+            let syntax_highlighted = ColoredTextDemo::create_syntax_highlighted_rust(&display_text);
+            let lines: Vec<&str> = display_text.split('\n').collect();
+            let total_lines = lines.len();
+            let start_line = app.scroll_offset + 1;
+            let num_digits = (total_lines + app.scroll_offset).to_string().len().max(3);
+
+            let mut char_index = 0;
+            for (line_idx, _) in lines.iter().enumerate() {
+                let line_num = start_line + line_idx;
+                let line_num_str = format!("{:>width$}", line_num, width = num_digits);
+
+                let is_current = current_line.map_or(false, |cl| cl == line_num);
+                let num_color = if is_current {
+                    current_line_color
+                } else {
+                    line_number_color
+                };
+
+                for ch in line_num_str.chars() {
+                    colored_text.push(ch, num_color);
+                }
+
+                colored_text.push(' ', separator_color);
+                colored_text.push('│', separator_color);
+                colored_text.push(' ', separator_color);
+
+                loop {
+                    if char_index >= syntax_highlighted.chars.len() {
+                        break;
+                    }
+                    let colored_char = &syntax_highlighted.chars[char_index];
+                    colored_text.push(colored_char.ch, colored_char.color);
+                    char_index += 1;
+
+                    if colored_char.ch == '\n' {
+                        break;
+                    }
+                }
+            }
+        } else {
+            add_line_numbers_to_colored_text(
+                &mut colored_text,
+                &display_text,
+                line_number_color,
+                current_line_color,
+                separator_color,
+                app.scroll_offset,
+                current_line,
+            );
+        }
     } else {
-        colored_text.push_str(&display_text, app.config.colors.text_default);
+        if app.config.text.syntax_highlighting {
+            let syntax_highlighted = ColoredTextDemo::create_syntax_highlighted_rust(&display_text);
+            colored_text.chars.extend(syntax_highlighted.chars);
+        } else {
+            colored_text.push_str(&display_text, app.config.colors.text_default);
+        }
     }
 
     if app.config.text.rainbow_effects {
@@ -324,4 +441,92 @@ fn apply_scroll_offset(text: &str, scroll_offset: usize) -> String {
     }
 
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_add_line_numbers_to_colored_text() {
+        let mut colored_text = ColoredText::new();
+        let test_code = "fn main() {\n    println!(\"Hello\");\n}";
+        let line_num_color = [0.5, 0.5, 0.6, 1.0];
+        let separator_color = [0.4, 0.4, 0.5, 1.0];
+
+        add_line_numbers_to_colored_text(
+            &mut colored_text,
+            test_code,
+            line_num_color,
+            line_num_color,
+            separator_color,
+            0,
+            None,
+        );
+
+        let result: String = colored_text.chars.iter().map(|c| c.ch).collect();
+
+        // Should contain line numbers
+        assert!(result.contains("  1 │"));
+        assert!(result.contains("  2 │"));
+        assert!(result.contains("  3 │"));
+
+        // Should contain the original code
+        assert!(result.contains("fn main() {"));
+        assert!(result.contains("println!"));
+    }
+
+    #[test]
+    fn test_add_line_numbers_with_scroll_offset() {
+        let mut colored_text = ColoredText::new();
+        let test_code = "line1\nline2\nline3";
+        let line_num_color = [0.5, 0.5, 0.6, 1.0];
+        let separator_color = [0.4, 0.4, 0.5, 1.0];
+
+        add_line_numbers_to_colored_text(
+            &mut colored_text,
+            test_code,
+            line_num_color,
+            line_num_color,
+            separator_color,
+            10,
+            None,
+        );
+
+        let result: String = colored_text.chars.iter().map(|c| c.ch).collect();
+
+        // Line numbers should start from 11 (10 + 1)
+        assert!(result.contains(" 11 │"));
+        assert!(result.contains(" 12 │"));
+        assert!(result.contains(" 13 │"));
+    }
+
+    #[test]
+    fn test_apply_scroll_offset() {
+        let text = "line1\nline2\nline3\nline4\nline5";
+
+        // No offset
+        let result = apply_scroll_offset(text, 0);
+        assert_eq!(result, text);
+
+        // Skip 2 lines
+        let result = apply_scroll_offset(text, 2);
+        assert_eq!(result, "line3\nline4\nline5");
+
+        // Skip all lines
+        let result = apply_scroll_offset(text, 5);
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn test_find_current_line_number() {
+        let text = "line1\nline2\n|line3\nline4";
+        assert_eq!(find_current_line_number(text), Some(3));
+
+        let text2 = "|first line\nsecond line";
+        assert_eq!(find_current_line_number(text2), Some(1));
+
+        let text3 = "no cursor here";
+        assert_eq!(find_current_line_number(text3), None);
+    }
 }
