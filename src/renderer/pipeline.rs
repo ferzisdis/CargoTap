@@ -6,7 +6,9 @@ use vulkano::{
         DynamicState, GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
         graphics::{
             GraphicsPipelineCreateInfo,
-            color_blend::{ColorBlendAttachmentState, ColorBlendState},
+            color_blend::{
+                AttachmentBlend, BlendFactor, BlendOp, ColorBlendAttachmentState, ColorBlendState,
+            },
             input_assembly::InputAssemblyState,
             multisample::MultisampleState,
             rasterization::RasterizationState,
@@ -114,14 +116,22 @@ mod text_fs {
             } pc;
 
             void main() {
-                float alpha = texture(glyph_texture, frag_tex_coords).r;
+                // Check if this is a solid color quad (background) vs textured glyph
+                // Background quads use UV [0,0] for all vertices
+                if (frag_tex_coords.x == 0.0 && frag_tex_coords.y == 0.0) {
+                    // Render solid color without texture sampling (for backgrounds)
+                    f_color = frag_color;
+                } else {
+                    // Normal glyph rendering with texture
+                    float alpha = texture(glyph_texture, frag_tex_coords).r;
 
-                // Use per-vertex color instead of push constant color
-                f_color = vec4(frag_color.rgb * alpha, frag_color.a);
+                    // Use per-vertex color instead of push constant color
+                    f_color = vec4(frag_color.rgb * alpha, frag_color.a);
 
-                // Discard fully transparent pixels
-                if (alpha < 0.01) {
-                    discard;
+                    // Discard fully transparent pixels
+                    if (alpha < 0.01) {
+                        discard;
+                    }
                 }
             }
         ",
@@ -240,7 +250,17 @@ pub fn create_text_pipeline(
             multisample_state: Some(MultisampleState::default()),
             color_blend_state: Some(ColorBlendState::with_attachment_states(
                 text_subpass.color_attachment_formats.len() as u32,
-                ColorBlendAttachmentState::default(),
+                ColorBlendAttachmentState {
+                    blend: Some(AttachmentBlend {
+                        color_blend_op: BlendOp::Add,
+                        src_color_blend_factor: BlendFactor::SrcAlpha,
+                        dst_color_blend_factor: BlendFactor::OneMinusSrcAlpha,
+                        alpha_blend_op: BlendOp::Add,
+                        src_alpha_blend_factor: BlendFactor::One,
+                        dst_alpha_blend_factor: BlendFactor::OneMinusSrcAlpha,
+                    }),
+                    ..Default::default()
+                },
             )),
             dynamic_state: [DynamicState::Viewport].into_iter().collect(),
             subpass: Some(text_subpass.into()),

@@ -51,12 +51,26 @@ impl CodeState {
 
     /// Returns the complete code (printed + current)
     pub fn get_full_code(&self) -> String {
-        format!("{}|{}", self.printed_code, self.current_code)
+        format!("{}{}", self.printed_code, self.current_code)
     }
 
     /// Returns the current typing position (length of printed_code)
     pub fn get_cursor_position(&self) -> usize {
         self.printed_code.len()
+    }
+
+    /// Returns the line number (1-based) where the cursor is located
+    pub fn get_cursor_line(&self) -> usize {
+        self.printed_code.chars().filter(|&c| c == '\n').count() + 1
+    }
+
+    /// Returns the column number (0-based) where the cursor is located on the current line
+    pub fn get_cursor_column(&self) -> usize {
+        if let Some(last_newline_pos) = self.printed_code.rfind('\n') {
+            self.printed_code.len() - last_newline_pos - 1
+        } else {
+            self.printed_code.len()
+        }
     }
 
     /// Returns the total length of all code
@@ -189,6 +203,35 @@ mod tests {
         // Peeking shouldn't change state
         assert_eq!(code_state.current_code, "hello");
         assert_eq!(code_state.printed_code, "");
+    }
+
+    #[test]
+    fn test_cursor_line_and_column() {
+        let code = "fn main() {\n    println!(\"Hello\");\n}".to_string();
+        let mut code_state = CodeState::new(code);
+
+        // At start: line 1, column 0
+        assert_eq!(code_state.get_cursor_line(), 1);
+        assert_eq!(code_state.get_cursor_column(), 0);
+
+        // Type "fn main() {" (11 chars)
+        for _ in 0..11 {
+            code_state.type_character();
+        }
+        assert_eq!(code_state.get_cursor_line(), 1);
+        assert_eq!(code_state.get_cursor_column(), 11);
+
+        // Type newline
+        code_state.type_character();
+        assert_eq!(code_state.get_cursor_line(), 2);
+        assert_eq!(code_state.get_cursor_column(), 0);
+
+        // Type "    " (4 spaces)
+        for _ in 0..4 {
+            code_state.type_character();
+        }
+        assert_eq!(code_state.get_cursor_line(), 2);
+        assert_eq!(code_state.get_cursor_column(), 4);
     }
 
     #[test]

@@ -2,19 +2,6 @@ use crate::app::CargoTapApp;
 use crate::examples::colored_text_demo::ColoredTextDemo;
 use crate::text::ColoredText;
 
-fn find_current_line_number(text: &str) -> Option<usize> {
-    let mut line_num = 1;
-    for ch in text.chars() {
-        if ch == '|' {
-            return Some(line_num);
-        }
-        if ch == '\n' {
-            line_num += 1;
-        }
-    }
-    None
-}
-
 fn add_line_numbers_to_colored_text(
     colored_text: &mut ColoredText,
     text: &str,
@@ -23,6 +10,8 @@ fn add_line_numbers_to_colored_text(
     separator_color: [f32; 4],
     scroll_offset: usize,
     current_line: Option<usize>,
+    cursor_position: usize,
+    caret_bg_color: [f32; 4],
 ) {
     let lines: Vec<&str> = text.split('\n').collect();
     let total_lines = lines.len();
@@ -48,8 +37,14 @@ fn add_line_numbers_to_colored_text(
         colored_text.push('│', separator_color);
         colored_text.push(' ', separator_color);
 
+        let mut char_index = 0;
         for ch in line.chars() {
-            colored_text.push(ch, [1.0, 1.0, 1.0, 1.0]);
+            if char_index == cursor_position {
+                colored_text.push_with_background(ch, [1.0, 1.0, 1.0, 1.0], caret_bg_color);
+            } else {
+                colored_text.push(ch, [1.0, 1.0, 1.0, 1.0]);
+            }
+            char_index += ch.len_utf8();
         }
 
         if i < lines.len() - 1 {
@@ -129,18 +124,53 @@ pub fn create_colored_text(app: &CargoTapApp) -> ColoredText {
     }
 
     let full_code = app.code_state.get_full_code();
+    let cursor_position = app.code_state.get_cursor_position();
     let display_text = apply_scroll_offset(&full_code, app.scroll_offset);
+
+    // Calculate cursor position in display text (after scroll offset)
+    let cursor_position_in_display = if app.scroll_offset == 0 {
+        cursor_position
+    } else {
+        // Count bytes skipped by scroll offset
+        let mut bytes_skipped = 0;
+        let mut lines_skipped = 0;
+        for ch in full_code.chars() {
+            if lines_skipped >= app.scroll_offset {
+                break;
+            }
+            bytes_skipped += ch.len_utf8();
+            if ch == '\n' {
+                lines_skipped += 1;
+            }
+        }
+        cursor_position.saturating_sub(bytes_skipped)
+    };
 
     if app.config.text.show_line_numbers {
         let line_number_color = [0.5, 0.5, 0.6, 1.0];
         let current_line_color = [1.0, 0.85, 0.2, 1.0]; // Bright yellow/gold
         let separator_color = [0.4, 0.4, 0.5, 1.0];
 
-        let current_line =
-            find_current_line_number(&display_text).map(|line| line + app.scroll_offset);
+        let current_line = Some(app.code_state.get_cursor_line());
+        let caret_bg_color = [0.0, 1.0, 0.0, 0.5]; // Semi-transparent green overlay for caret
 
         if app.config.text.syntax_highlighting {
-            let syntax_highlighted = ColoredTextDemo::create_syntax_highlighted_rust(&display_text);
+            let mut syntax_highlighted =
+                ColoredTextDemo::create_syntax_highlighted_rust(&display_text);
+
+            // Apply caret background to the character at cursor position
+            if cursor_position_in_display < syntax_highlighted.chars.len() {
+                syntax_highlighted.chars[cursor_position_in_display].background_color =
+                    Some(caret_bg_color);
+            } else if cursor_position_in_display == syntax_highlighted.chars.len() {
+                // Cursor at end of text - add a space with background
+                syntax_highlighted.chars.push(crate::text::ColoredChar {
+                    ch: ' ',
+                    color: app.config.colors.text_default,
+                    background_color: Some(caret_bg_color),
+                });
+            }
+
             let lines: Vec<&str> = display_text.split('\n').collect();
             let total_lines = lines.len();
             let start_line = app.scroll_offset + 1;
@@ -171,7 +201,15 @@ pub fn create_colored_text(app: &CargoTapApp) -> ColoredText {
                         break;
                     }
                     let colored_char = &syntax_highlighted.chars[char_index];
-                    colored_text.push(colored_char.ch, colored_char.color);
+                    if colored_char.background_color.is_some() {
+                        colored_text.push_with_background(
+                            colored_char.ch,
+                            colored_char.color,
+                            colored_char.background_color.unwrap(),
+                        );
+                    } else {
+                        colored_text.push(colored_char.ch, colored_char.color);
+                    }
                     char_index += 1;
 
                     if colored_char.ch == '\n' {
@@ -188,14 +226,66 @@ pub fn create_colored_text(app: &CargoTapApp) -> ColoredText {
                 separator_color,
                 app.scroll_offset,
                 current_line,
+                cursor_position_in_display,
+                caret_bg_color,
             );
         }
     } else {
+        let caret_bg_color = [0.0, 1.0, 0.0, 0.5]; // Semi-transparent green overlay for caret
+
         if app.config.text.syntax_highlighting {
-            let syntax_highlighted = ColoredTextDemo::create_syntax_highlighted_rust(&display_text);
-            colored_text.chars.extend(syntax_highlighted.chars);
+            let mut syntax_highlighted =
+                ColoredTextDemo::create_syntax_highlighted_rust(&display_text);
+
+            // Apply caret background to the character at cursor position
+            if cursor_position_in_display < syntax_highlighted.chars.len() {
+                syntax_highlighted.chars[cursor_position_in_display].background_color =
+                    Some(caret_bg_color);
+            } else if cursor_position_in_display == syntax_highlighted.chars.len() {
+                // Cursor at end of text - add a space with background
+                syntax_highlighted.chars.push(crate::text::ColoredChar {
+                    ch: ' ',
+                    color: app.config.colors.text_default,
+                    background_color: Some(caret_bg_color),
+                });
+            }
+
+            for colored_char in syntax_highlighted.chars {
+                if colored_char.background_color.is_some() {
+                    colored_text.push_with_background(
+                        colored_char.ch,
+                        colored_char.color,
+                        colored_char.background_color.unwrap(),
+                    );
+                } else {
+                    colored_text.push(colored_char.ch, colored_char.color);
+                }
+            }
         } else {
-            colored_text.push_str(&display_text, app.config.colors.text_default);
+            let mut char_index = 0;
+            let mut found_cursor = false;
+            for ch in display_text.chars() {
+                if char_index == cursor_position_in_display {
+                    colored_text.push_with_background(
+                        ch,
+                        app.config.colors.text_default,
+                        caret_bg_color,
+                    );
+                    found_cursor = true;
+                } else {
+                    colored_text.push(ch, app.config.colors.text_default);
+                }
+                char_index += ch.len_utf8();
+            }
+
+            // If cursor is at the end of text, add a space with background
+            if !found_cursor && char_index == cursor_position_in_display {
+                colored_text.push_with_background(
+                    ' ',
+                    app.config.colors.text_default,
+                    caret_bg_color,
+                );
+            }
         }
     }
 
@@ -462,6 +552,8 @@ mod tests {
             separator_color,
             0,
             None,
+            0,
+            [0.0, 1.0, 0.0, 1.0],
         );
 
         let result: String = colored_text.chars.iter().map(|c| c.ch).collect();
@@ -491,6 +583,8 @@ mod tests {
             separator_color,
             10,
             None,
+            0,
+            [0.0, 1.0, 0.0, 1.0],
         );
 
         let result: String = colored_text.chars.iter().map(|c| c.ch).collect();
@@ -499,6 +593,47 @@ mod tests {
         assert!(result.contains(" 11 │"));
         assert!(result.contains(" 12 │"));
         assert!(result.contains(" 13 │"));
+    }
+
+    #[test]
+    fn test_caret_background_color() {
+        use crate::code_state::CodeState;
+        use crate::config::Config;
+
+        let config = Config::load();
+        let code = "hello world".to_string();
+        let mut code_state = CodeState::new(code);
+
+        // Type 5 characters so cursor is at position 5 (on 'o')
+        for _ in 0..5 {
+            code_state.type_character();
+        }
+
+        let full_code = code_state.get_full_code();
+        let cursor_position = code_state.get_cursor_position();
+        assert_eq!(cursor_position, 5);
+
+        // Create colored text without syntax highlighting
+        let mut colored_text = ColoredText::new();
+        let caret_bg_color = [0.0, 1.0, 0.0, 1.0];
+
+        let mut char_index = 0;
+        for ch in full_code.chars() {
+            if char_index == cursor_position {
+                colored_text.push_with_background(ch, [1.0, 1.0, 1.0, 1.0], caret_bg_color);
+            } else {
+                colored_text.push(ch, [1.0, 1.0, 1.0, 1.0]);
+            }
+            char_index += ch.len_utf8();
+        }
+
+        // Verify the character at position 5 has a background color
+        assert_eq!(colored_text.chars[5].ch, ' ');
+        assert_eq!(colored_text.chars[5].background_color, Some(caret_bg_color));
+
+        // Verify other characters don't have background
+        assert_eq!(colored_text.chars[0].background_color, None);
+        assert_eq!(colored_text.chars[4].background_color, None);
     }
 
     #[test]
@@ -516,17 +651,5 @@ mod tests {
         // Skip all lines
         let result = apply_scroll_offset(text, 5);
         assert_eq!(result, "");
-    }
-
-    #[test]
-    fn test_find_current_line_number() {
-        let text = "line1\nline2\n|line3\nline4";
-        assert_eq!(find_current_line_number(text), Some(3));
-
-        let text2 = "|first line\nsecond line";
-        assert_eq!(find_current_line_number(text2), Some(1));
-
-        let text3 = "no cursor here";
-        assert_eq!(find_current_line_number(text3), None);
     }
 }

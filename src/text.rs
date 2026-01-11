@@ -42,6 +42,7 @@ pub struct TextRenderSettings {
 pub struct ColoredChar {
     pub ch: char,
     pub color: [f32; 4],
+    pub background_color: Option<[f32; 4]>,
 }
 
 #[derive(Debug, Clone)]
@@ -55,12 +56,31 @@ impl ColoredText {
     }
 
     pub fn from_str_with_color(text: &str, color: [f32; 4]) -> Self {
-        let chars = text.chars().map(|ch| ColoredChar { ch, color }).collect();
+        let chars = text
+            .chars()
+            .map(|ch| ColoredChar {
+                ch,
+                color,
+                background_color: None,
+            })
+            .collect();
         Self { chars }
     }
 
     pub fn push(&mut self, ch: char, color: [f32; 4]) {
-        self.chars.push(ColoredChar { ch, color });
+        self.chars.push(ColoredChar {
+            ch,
+            color,
+            background_color: None,
+        });
+    }
+
+    pub fn push_with_background(&mut self, ch: char, color: [f32; 4], background_color: [f32; 4]) {
+        self.chars.push(ColoredChar {
+            ch,
+            color,
+            background_color: Some(background_color),
+        });
     }
 
     pub fn push_str(&mut self, text: &str, color: [f32; 4]) {
@@ -183,6 +203,14 @@ impl TextSystem {
                 continue;
             }
 
+            // Calculate advance width for this character (needed for both glyph and background)
+            let glyph_id = self.font.glyph_id(ch);
+            let advance_width = if let Some(glyph_info) = self.glyph_infos.get(&ch) {
+                glyph_info.advance
+            } else {
+                scaled_font.h_advance(glyph_id)
+            };
+
             // Get glyph info from atlas
             if let Some(glyph_info) = self.glyph_infos.get(&ch) {
                 let pos_x = cursor_x + glyph_info.bearing[0];
@@ -223,12 +251,57 @@ impl TextSystem {
                 ];
 
                 self.vertices.extend_from_slice(&vertices);
-                cursor_x += glyph_info.advance;
-            } else {
-                // Fallback for missing glyphs
-                let glyph_id = self.font.glyph_id(ch);
-                cursor_x += scaled_font.h_advance(glyph_id);
             }
+
+            // Render caret overlay AFTER the character (or for whitespace without glyphs)
+            if let Some(bg_color) = colored_char.background_color {
+                // Create a caret overlay quad that covers the character advance
+                // The background should start at the top of the line, not at cursor_y
+                let bg_x = cursor_x;
+                let bg_y = cursor_y - scaled_font.ascent();
+                let bg_width = advance_width;
+                let bg_height = line_height;
+
+                // Use solid color rendering (UV [0,0] is handled specially in shader)
+                let bg_uv = [0.0, 0.0];
+
+                let bg_vertices = [
+                    TextVertex {
+                        position: [bg_x, bg_y],
+                        tex_coords: bg_uv,
+                        color: bg_color,
+                    },
+                    TextVertex {
+                        position: [bg_x + bg_width, bg_y],
+                        tex_coords: bg_uv,
+                        color: bg_color,
+                    },
+                    TextVertex {
+                        position: [bg_x, bg_y + bg_height],
+                        tex_coords: bg_uv,
+                        color: bg_color,
+                    },
+                    TextVertex {
+                        position: [bg_x + bg_width, bg_y],
+                        tex_coords: bg_uv,
+                        color: bg_color,
+                    },
+                    TextVertex {
+                        position: [bg_x + bg_width, bg_y + bg_height],
+                        tex_coords: bg_uv,
+                        color: bg_color,
+                    },
+                    TextVertex {
+                        position: [bg_x, bg_y + bg_height],
+                        tex_coords: bg_uv,
+                        color: bg_color,
+                    },
+                ];
+
+                self.vertices.extend_from_slice(&bg_vertices);
+            }
+
+            cursor_x += advance_width;
         }
 
         self.update_vertex_buffer()?;
