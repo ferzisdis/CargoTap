@@ -83,6 +83,27 @@ pub fn create_colored_text(app: &CargoTapApp) -> ColoredText {
         [0.0, 1.0, 0.5, 1.0],
     );
 
+    if app.config.debug.show_profiling_info {
+        colored_text.push_str(
+            &format!(
+                "📊 FPS: {:.1} | Key: {:.3}ms | Text Update: {:.3}ms | UI Gen: {:.3}ms\n",
+                app.current_fps,
+                app.last_key_processing_time_ms,
+                app.text_update_time_ms,
+                app.ui_generation_time_ms
+            ),
+            [0.8, 0.8, 0.8, 1.0],
+        );
+    } else {
+        colored_text.push_str(
+            &format!(
+                "📊 FPS: {:.1} | Key Processing: {:.3} ms\n",
+                app.current_fps, app.last_key_processing_time_ms
+            ),
+            [0.8, 0.8, 0.8, 1.0],
+        );
+    }
+
     colored_text.push_str("─".repeat(50).as_str(), [0.5, 0.8, 1.0, 1.0]);
     colored_text.push('\n', app.config.colors.text_default);
 
@@ -123,9 +144,13 @@ pub fn create_colored_text(app: &CargoTapApp) -> ColoredText {
         colored_text.push('\n', app.config.colors.text_default);
     }
 
-    let full_code = app.code_state.get_full_code();
     let cursor_position = app.code_state.get_cursor_position();
-    let display_text = apply_scroll_offset(&full_code, app.scroll_offset);
+
+    // Get the cached colored text for the full code
+    let full_code_colored = app.code_state.get_full_code_colored();
+
+    // Apply scroll offset to the colored text
+    let display_colored = apply_scroll_offset_colored(&full_code_colored, app.scroll_offset);
 
     // Calculate cursor position in display text (after scroll offset)
     let cursor_position_in_display = if app.scroll_offset == 0 {
@@ -134,12 +159,12 @@ pub fn create_colored_text(app: &CargoTapApp) -> ColoredText {
         // Count bytes skipped by scroll offset
         let mut bytes_skipped = 0;
         let mut lines_skipped = 0;
-        for ch in full_code.chars() {
+        for colored_char in &full_code_colored.chars {
             if lines_skipped >= app.scroll_offset {
                 break;
             }
-            bytes_skipped += ch.len_utf8();
-            if ch == '\n' {
+            bytes_skipped += colored_char.ch.len_utf8();
+            if colored_char.ch == '\n' {
                 lines_skipped += 1;
             }
         }
@@ -154,34 +179,67 @@ pub fn create_colored_text(app: &CargoTapApp) -> ColoredText {
         let current_line = Some(app.code_state.get_cursor_line());
         let caret_bg_color = [0.0, 1.0, 0.0, 0.5]; // Semi-transparent green overlay for caret
 
-        if app.config.text.syntax_highlighting {
-            let mut syntax_highlighted =
-                ColoredTextDemo::create_syntax_highlighted_rust(&display_text);
+        let mut display_with_caret = display_colored.clone();
 
-            // Apply caret background to the character at cursor position
-            if cursor_position_in_display < syntax_highlighted.chars.len() {
-                syntax_highlighted.chars[cursor_position_in_display].background_color =
-                    Some(caret_bg_color);
-            } else if cursor_position_in_display == syntax_highlighted.chars.len() {
-                // Cursor at end of text - add a space with background
-                syntax_highlighted.chars.push(crate::text::ColoredChar {
-                    ch: ' ',
-                    color: app.config.colors.text_default,
-                    background_color: Some(caret_bg_color),
-                });
+        // Apply caret background to the character at cursor position
+        if cursor_position_in_display < display_with_caret.chars.len() {
+            display_with_caret.chars[cursor_position_in_display].background_color =
+                Some(caret_bg_color);
+        } else if cursor_position_in_display == display_with_caret.chars.len() {
+            // Cursor at end of text - add a space with background
+            display_with_caret.chars.push(crate::text::ColoredChar {
+                ch: ' ',
+                color: app.config.colors.text_default,
+                background_color: Some(caret_bg_color),
+            });
+        }
+
+        // Count lines in display text for line numbering
+        let line_count = display_with_caret
+            .chars
+            .iter()
+            .filter(|c| c.ch == '\n')
+            .count()
+            + 1;
+        let start_line = app.scroll_offset + 1;
+        let num_digits = (line_count + app.scroll_offset).to_string().len().max(3);
+
+        let mut char_index = 0;
+        let mut current_line_num = start_line;
+
+        // Add first line number
+        let line_num_str = format!("{:>width$}", current_line_num, width = num_digits);
+        let is_current = current_line.map_or(false, |cl| cl == current_line_num);
+        let num_color = if is_current {
+            current_line_color
+        } else {
+            line_number_color
+        };
+
+        for ch in line_num_str.chars() {
+            colored_text.push(ch, num_color);
+        }
+        colored_text.push(' ', separator_color);
+        colored_text.push('│', separator_color);
+        colored_text.push(' ', separator_color);
+
+        // Add colored code with line numbers
+        for colored_char in &display_with_caret.chars {
+            if colored_char.background_color.is_some() {
+                colored_text.push_with_background(
+                    colored_char.ch,
+                    colored_char.color,
+                    colored_char.background_color.unwrap(),
+                );
+            } else {
+                colored_text.push(colored_char.ch, colored_char.color);
             }
 
-            let lines: Vec<&str> = display_text.split('\n').collect();
-            let total_lines = lines.len();
-            let start_line = app.scroll_offset + 1;
-            let num_digits = (total_lines + app.scroll_offset).to_string().len().max(3);
-
-            let mut char_index = 0;
-            for (line_idx, _) in lines.iter().enumerate() {
-                let line_num = start_line + line_idx;
-                let line_num_str = format!("{:>width$}", line_num, width = num_digits);
-
-                let is_current = current_line.map_or(false, |cl| cl == line_num);
+            if colored_char.ch == '\n' && char_index + 1 < display_with_caret.chars.len() {
+                // Add line number for next line
+                current_line_num += 1;
+                let line_num_str = format!("{:>width$}", current_line_num, width = num_digits);
+                let is_current = current_line.map_or(false, |cl| cl == current_line_num);
                 let num_color = if is_current {
                     current_line_color
                 } else {
@@ -191,100 +249,40 @@ pub fn create_colored_text(app: &CargoTapApp) -> ColoredText {
                 for ch in line_num_str.chars() {
                     colored_text.push(ch, num_color);
                 }
-
                 colored_text.push(' ', separator_color);
                 colored_text.push('│', separator_color);
                 colored_text.push(' ', separator_color);
-
-                loop {
-                    if char_index >= syntax_highlighted.chars.len() {
-                        break;
-                    }
-                    let colored_char = &syntax_highlighted.chars[char_index];
-                    if colored_char.background_color.is_some() {
-                        colored_text.push_with_background(
-                            colored_char.ch,
-                            colored_char.color,
-                            colored_char.background_color.unwrap(),
-                        );
-                    } else {
-                        colored_text.push(colored_char.ch, colored_char.color);
-                    }
-                    char_index += 1;
-
-                    if colored_char.ch == '\n' {
-                        break;
-                    }
-                }
             }
-        } else {
-            add_line_numbers_to_colored_text(
-                &mut colored_text,
-                &display_text,
-                line_number_color,
-                current_line_color,
-                separator_color,
-                app.scroll_offset,
-                current_line,
-                cursor_position_in_display,
-                caret_bg_color,
-            );
+
+            char_index += 1;
         }
     } else {
         let caret_bg_color = [0.0, 1.0, 0.0, 0.5]; // Semi-transparent green overlay for caret
 
-        if app.config.text.syntax_highlighting {
-            let mut syntax_highlighted =
-                ColoredTextDemo::create_syntax_highlighted_rust(&display_text);
+        let mut display_with_caret = display_colored.clone();
 
-            // Apply caret background to the character at cursor position
-            if cursor_position_in_display < syntax_highlighted.chars.len() {
-                syntax_highlighted.chars[cursor_position_in_display].background_color =
-                    Some(caret_bg_color);
-            } else if cursor_position_in_display == syntax_highlighted.chars.len() {
-                // Cursor at end of text - add a space with background
-                syntax_highlighted.chars.push(crate::text::ColoredChar {
-                    ch: ' ',
-                    color: app.config.colors.text_default,
-                    background_color: Some(caret_bg_color),
-                });
-            }
+        // Apply caret background to the character at cursor position
+        if cursor_position_in_display < display_with_caret.chars.len() {
+            display_with_caret.chars[cursor_position_in_display].background_color =
+                Some(caret_bg_color);
+        } else if cursor_position_in_display == display_with_caret.chars.len() {
+            // Cursor at end of text - add a space with background
+            display_with_caret.chars.push(crate::text::ColoredChar {
+                ch: ' ',
+                color: app.config.colors.text_default,
+                background_color: Some(caret_bg_color),
+            });
+        }
 
-            for colored_char in syntax_highlighted.chars {
-                if colored_char.background_color.is_some() {
-                    colored_text.push_with_background(
-                        colored_char.ch,
-                        colored_char.color,
-                        colored_char.background_color.unwrap(),
-                    );
-                } else {
-                    colored_text.push(colored_char.ch, colored_char.color);
-                }
-            }
-        } else {
-            let mut char_index = 0;
-            let mut found_cursor = false;
-            for ch in display_text.chars() {
-                if char_index == cursor_position_in_display {
-                    colored_text.push_with_background(
-                        ch,
-                        app.config.colors.text_default,
-                        caret_bg_color,
-                    );
-                    found_cursor = true;
-                } else {
-                    colored_text.push(ch, app.config.colors.text_default);
-                }
-                char_index += ch.len_utf8();
-            }
-
-            // If cursor is at the end of text, add a space with background
-            if !found_cursor && char_index == cursor_position_in_display {
+        for colored_char in &display_with_caret.chars {
+            if colored_char.background_color.is_some() {
                 colored_text.push_with_background(
-                    ' ',
-                    app.config.colors.text_default,
-                    caret_bg_color,
+                    colored_char.ch,
+                    colored_char.color,
+                    colored_char.background_color.unwrap(),
                 );
+            } else {
+                colored_text.push(colored_char.ch, colored_char.color);
             }
         }
     }
@@ -526,6 +524,29 @@ fn apply_scroll_offset(text: &str, scroll_offset: usize) -> String {
         if lines_skipped >= scroll_offset {
             result.push(ch);
         } else if ch == '\n' {
+            lines_skipped += 1;
+        }
+    }
+
+    result
+}
+
+fn apply_scroll_offset_colored(colored_text: &ColoredText, scroll_offset: usize) -> ColoredText {
+    if scroll_offset == 0 {
+        return colored_text.clone();
+    }
+
+    let mut lines_skipped = 0;
+    let mut result = ColoredText::new();
+
+    for colored_char in &colored_text.chars {
+        if lines_skipped >= scroll_offset {
+            result.chars.push(crate::text::ColoredChar {
+                ch: colored_char.ch,
+                color: colored_char.color,
+                background_color: colored_char.background_color,
+            });
+        } else if colored_char.ch == '\n' {
             lines_skipped += 1;
         }
     }

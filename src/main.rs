@@ -9,6 +9,7 @@ mod config;
 mod demo_code_state;
 mod event_handler;
 mod input;
+mod profiling;
 mod progress_helper;
 mod progress_storage;
 mod renderer;

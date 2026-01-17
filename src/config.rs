@@ -195,6 +195,9 @@ pub struct DebugConfig {
     /// Enable FPS counter
     pub show_fps: bool,
 
+    /// Show detailed profiling information on screen
+    pub show_profiling_info: bool,
+
     /// Save debug logs to file
     pub save_logs_to_file: bool,
 
@@ -213,6 +216,7 @@ impl Default for DebugConfig {
             debug_text_system: false,
             log_code_state: true,
             show_fps: false,
+            show_profiling_info: false,
             save_logs_to_file: false,
             log_file_path: "cargotap_debug.log".to_string(),
         }

@@ -1,6 +1,8 @@
 use anyhow::Result;
 use log::info;
+use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use winit::event_loop::EventLoop;
 
 use crate::code_state;
@@ -27,6 +29,12 @@ pub struct CargoTapApp {
     pub show_statistics: bool,
     pub file_selection_mode: bool,
     pub file_input_buffer: String,
+    pub frame_times: VecDeque<Instant>,
+    pub last_frame_time: Instant,
+    pub current_fps: f32,
+    pub last_key_processing_time_ms: f64,
+    pub text_update_time_ms: f64,
+    pub ui_generation_time_ms: f64,
 }
 
 impl CargoTapApp {
@@ -112,6 +120,7 @@ impl CargoTapApp {
             log::error!("Failed to save last opened file: {}", e);
         }
 
+        let now = Instant::now();
         Ok(Self {
             render_engine,
             text_system: None,
@@ -127,6 +136,12 @@ impl CargoTapApp {
             show_statistics: false,
             file_selection_mode: false,
             file_input_buffer: String::new(),
+            frame_times: VecDeque::with_capacity(60),
+            last_frame_time: now,
+            current_fps: 0.0,
+            last_key_processing_time_ms: 0.0,
+            text_update_time_ms: 0.0,
+            ui_generation_time_ms: 0.0,
         })
     }
 
@@ -194,14 +209,26 @@ impl CargoTapApp {
     }
 
     pub fn update_text(&mut self) {
+        let start = Instant::now();
+
+        // Update the syntax highlighting cache in code_state
+        self.code_state
+            .set_syntax_highlighting(self.config.text.syntax_highlighting);
+        self.code_state.update_colored_cache();
+
+        let ui_start = Instant::now();
+        let colored_text = crate::ui::create_colored_text(self);
+        self.ui_generation_time_ms = ui_start.elapsed().as_secs_f64() * 1000.0;
+
         if let Some(ref text_system) = self.text_system {
             if let Ok(mut text_system) = text_system.lock() {
-                let colored_text = crate::ui::create_colored_text(self);
                 if let Err(e) = text_system.update_text_with_settings(&colored_text) {
                     log::error!("Failed to update main text: {}", e);
                 }
             }
         }
+
+        self.text_update_time_ms = start.elapsed().as_secs_f64() * 1000.0;
     }
 
     pub fn save_session_statistics(&mut self) -> bool {
@@ -289,5 +316,23 @@ impl CargoTapApp {
         self.session_state.start_new_session(current_pos, file_path);
 
         Ok(())
+    }
+
+    pub fn update_frame_time(&mut self) {
+        let now = Instant::now();
+        self.frame_times.push_back(now);
+
+        if self.frame_times.len() > 60 {
+            self.frame_times.pop_front();
+        }
+
+        if self.frame_times.len() >= 2 {
+            let oldest = self.frame_times.front().unwrap();
+            let duration = now.duration_since(*oldest);
+            let frames = self.frame_times.len() as f32;
+            self.current_fps = frames / duration.as_secs_f32();
+        }
+
+        self.last_frame_time = now;
     }
 }

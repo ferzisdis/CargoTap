@@ -3,6 +3,9 @@
 //! This module provides the CodeState struct which manages the transition
 //! of code from "to be typed" to "already typed" state.
 
+use crate::examples::colored_text_demo::ColoredTextDemo;
+use crate::text::ColoredText;
+
 /// Represents the state of code in the typing game
 #[derive(Debug, Clone)]
 pub struct CodeState {
@@ -10,6 +13,10 @@ pub struct CodeState {
     pub current_code: String,
     /// Code that has already been typed by the user
     pub printed_code: String,
+    /// Cached syntax-highlighted version of the full code
+    cached_colored_text: Option<ColoredText>,
+    /// Whether syntax highlighting is enabled
+    syntax_highlighting_enabled: bool,
 }
 
 impl CodeState {
@@ -18,6 +25,8 @@ impl CodeState {
         Self {
             current_code: initial_code,
             printed_code: String::new(),
+            cached_colored_text: None,
+            syntax_highlighting_enabled: false,
         }
     }
 
@@ -29,6 +38,8 @@ impl CodeState {
             self.current_code = self.current_code.chars().skip(1).collect();
             // Add it to printed_code
             self.printed_code.push(ch);
+            // Invalidate cache
+            self.cached_colored_text = None;
             Some(ch)
         } else {
             None
@@ -43,6 +54,8 @@ impl CodeState {
             self.printed_code.pop();
             // Add it to the beginning of current_code
             self.current_code = format!("{}{}", ch, self.current_code);
+            // Invalidate cache
+            self.cached_colored_text = None;
             Some(ch)
         } else {
             None
@@ -52,6 +65,41 @@ impl CodeState {
     /// Returns the complete code (printed + current)
     pub fn get_full_code(&self) -> String {
         format!("{}{}", self.printed_code, self.current_code)
+    }
+
+    /// Returns the complete code as syntax-highlighted ColoredText
+    /// Uses cached version if available and syntax highlighting is enabled
+    pub fn get_full_code_colored(&self) -> ColoredText {
+        if self.syntax_highlighting_enabled {
+            if let Some(ref cached) = self.cached_colored_text {
+                return cached.clone();
+            }
+            // If cache is not available, generate without caching (fallback)
+            let full_code = self.get_full_code();
+            ColoredTextDemo::create_syntax_highlighted_rust(&full_code)
+        } else {
+            // Return plain text with default color
+            let full_code = self.get_full_code();
+            ColoredText::from_str_with_color(&full_code, [1.0, 1.0, 1.0, 1.0])
+        }
+    }
+
+    /// Updates the cached colored text if syntax highlighting is enabled and cache is invalid
+    pub fn update_colored_cache(&mut self) {
+        if self.syntax_highlighting_enabled && self.cached_colored_text.is_none() {
+            let full_code = self.get_full_code();
+            let colored = ColoredTextDemo::create_syntax_highlighted_rust(&full_code);
+            self.cached_colored_text = Some(colored);
+        }
+    }
+
+    /// Sets whether syntax highlighting is enabled
+    /// Invalidates cache if the setting changes
+    pub fn set_syntax_highlighting(&mut self, enabled: bool) {
+        if self.syntax_highlighting_enabled != enabled {
+            self.syntax_highlighting_enabled = enabled;
+            self.cached_colored_text = None;
+        }
     }
 
     /// Returns the current typing position (length of printed_code)
@@ -97,6 +145,8 @@ impl CodeState {
     pub fn reset(&mut self, new_code: String) {
         self.current_code = new_code;
         self.printed_code.clear();
+        // Invalidate cache
+        self.cached_colored_text = None;
     }
 
     /// Returns the next character that should be typed (without removing it)
@@ -124,6 +174,11 @@ impl CodeState {
                 // Stop when we hit a non-whitespace character
                 break;
             }
+        }
+
+        if consumed > 0 {
+            // Invalidate cache
+            self.cached_colored_text = None;
         }
 
         consumed

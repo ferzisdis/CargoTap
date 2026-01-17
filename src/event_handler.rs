@@ -1,4 +1,5 @@
 use log::info;
+use std::time::Instant;
 use winit::{
     application::ApplicationHandler, event::WindowEvent, event_loop::ActiveEventLoop,
     window::WindowId,
@@ -38,6 +39,8 @@ impl ApplicationHandler for CargoTapApp {
             event: key_event, ..
         } = &event
         {
+            let start_time = Instant::now();
+
             self.input_handler.process_key_event(key_event.clone());
 
             if let Some(input::InputAction::Quit) = self.input_handler.get_last_action() {
@@ -56,6 +59,9 @@ impl ApplicationHandler for CargoTapApp {
 
             typing_handler::handle_typing_input(self);
             self.update_text();
+
+            let elapsed = start_time.elapsed();
+            self.last_key_processing_time_ms = elapsed.as_secs_f64() * 1000.0;
         }
 
         self.render_engine
@@ -75,6 +81,7 @@ impl ApplicationHandler for CargoTapApp {
             self.update_text();
         }
 
+        self.update_frame_time();
         self.render_engine.about_to_wait(_event_loop);
     }
 }

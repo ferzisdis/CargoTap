@@ -129,7 +129,6 @@ pub struct TextSystem {
     memory_allocator: Arc<StandardMemoryAllocator>,
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
     descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
-    vertices: Vec<TextVertex>,
     vertex_buffer: Option<Subbuffer<[TextVertex]>>,
     pub is_pipeline_ready: bool,
 
@@ -168,7 +167,6 @@ impl TextSystem {
             memory_allocator,
             command_buffer_allocator,
             descriptor_set_allocator,
-            vertices: Vec::new(),
             vertex_buffer: None,
             is_pipeline_ready: false, // Will be ready after atlas creation
 
@@ -181,8 +179,7 @@ impl TextSystem {
     }
 
     pub fn update_text_with_settings(&mut self, colored_text: &ColoredText) -> Result<()> {
-        self.vertices.clear();
-
+        let mut vertices = Vec::with_capacity(colored_text.chars.len() * 6 as usize);
         let scale = PxScale::from(self.current_settings.font_size);
         let scaled_font = self.font.as_scaled(scale);
 
@@ -204,10 +201,10 @@ impl TextSystem {
             }
 
             // Calculate advance width for this character (needed for both glyph and background)
-            let glyph_id = self.font.glyph_id(ch);
             let advance_width = if let Some(glyph_info) = self.glyph_infos.get(&ch) {
                 glyph_info.advance
             } else {
+                let glyph_id = self.font.glyph_id(ch);
                 scaled_font.h_advance(glyph_id)
             };
 
@@ -217,7 +214,7 @@ impl TextSystem {
                 let pos_y = cursor_y + glyph_info.bearing[1];
 
                 // Create quad vertices for this glyph using atlas UV coordinates
-                let vertices = [
+                let glyph_vertices = [
                     TextVertex {
                         position: [pos_x, pos_y],
                         tex_coords: [glyph_info.uv_min[0], glyph_info.uv_min[1]],
@@ -250,7 +247,7 @@ impl TextSystem {
                     },
                 ];
 
-                self.vertices.extend_from_slice(&vertices);
+                vertices.extend_from_slice(&glyph_vertices);
             }
 
             // Render caret overlay AFTER the character (or for whitespace without glyphs)
@@ -298,13 +295,13 @@ impl TextSystem {
                     },
                 ];
 
-                self.vertices.extend_from_slice(&bg_vertices);
+                vertices.extend_from_slice(&bg_vertices);
             }
 
             cursor_x += advance_width;
         }
 
-        self.update_vertex_buffer()?;
+        self.update_vertex_buffer(vertices)?;
         Ok(())
     }
 
@@ -314,8 +311,8 @@ impl TextSystem {
         self.update_text_with_settings(&colored_text)
     }
 
-    fn update_vertex_buffer(&mut self) -> Result<()> {
-        if self.vertices.is_empty() {
+    fn update_vertex_buffer(&mut self, vertices: Vec<TextVertex>) -> Result<()> {
+        if vertices.is_empty() {
             return Ok(());
         }
 
@@ -330,15 +327,11 @@ impl TextSystem {
                     | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
-            self.vertices.iter().cloned(),
+            vertices,
         )?;
 
         self.vertex_buffer = Some(vertex_buffer);
         Ok(())
-    }
-
-    pub fn get_vertices(&self) -> &[TextVertex] {
-        &self.vertices
     }
 
     pub fn get_vertex_buffer(&self) -> Option<&Subbuffer<[TextVertex]>> {
@@ -622,15 +615,15 @@ impl TextSystem {
         text_pipeline_layout: Arc<PipelineLayout>,
         screen_size: [f32; 2],
     ) -> Result<()> {
-        log::debug!(
-            "TextSystem::draw() called with {} vertices",
-            self.vertices.len()
-        );
-
         if let (Some(vertex_buffer), Some(descriptor_set)) =
             (&self.vertex_buffer, &self.descriptor_set)
         {
-            if !self.vertices.is_empty() {
+            log::debug!(
+                "TextSystem::draw() called with {} vertices",
+                vertex_buffer.len()
+            );
+
+            if !vertex_buffer.len() > 0 {
                 // Set push constants
                 let push_constants = TextPushConstants {
                     screen_size,
@@ -654,13 +647,13 @@ impl TextSystem {
                         .map_err(|e| anyhow::anyhow!("Failed to set push constants: {}", e))?
                         .bind_vertex_buffers(0, vertex_buffer.clone())
                         .map_err(|e| anyhow::anyhow!("Failed to bind vertex buffer: {}", e))?
-                        .draw(self.vertices.len() as u32, 1, 0, 0)
+                        .draw(vertex_buffer.len() as u32, 1, 0, 0)
                         .map_err(|e| anyhow::anyhow!("Failed to draw vertices: {}", e))?;
                 }
 
                 log::debug!(
                     "Successfully drew {} text vertices to screen with text pipeline",
-                    self.vertices.len()
+                    vertex_buffer.len()
                 );
             }
         } else {
@@ -670,6 +663,6 @@ impl TextSystem {
     }
 
     pub fn has_text(&self) -> bool {
-        !self.vertices.is_empty() && self.vertex_buffer.is_some() && self.descriptor_set.is_some()
+        self.vertex_buffer.is_some() && self.descriptor_set.is_some()
     }
 }
