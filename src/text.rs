@@ -78,6 +78,13 @@ impl ColoredLine {
     }
 }
 
+pub trait TextCanvas {
+    fn push_char(&mut self, ch: char, color: [f32; 4]);
+    fn push_str(&mut self, text: &str, color: [f32; 4]);
+    fn push_with_background(&mut self, ch: char, color: [f32; 4], bg_color: [f32; 4]);
+    fn newline(&mut self);
+}
+
 #[derive(Debug, Clone)]
 pub struct ColoredText {
     pub lines: Vec<ColoredLine>,
@@ -170,6 +177,24 @@ impl ColoredText {
                 last_line.chars.push(colored_char);
             }
         }
+    }
+}
+
+impl TextCanvas for ColoredText {
+    fn push_char(&mut self, ch: char, color: [f32; 4]) {
+        self.push(ch, color);
+    }
+
+    fn push_str(&mut self, text: &str, color: [f32; 4]) {
+        ColoredText::push_str(self, text, color);
+    }
+
+    fn push_with_background(&mut self, ch: char, color: [f32; 4], bg_color: [f32; 4]) {
+        ColoredText::push_with_background(self, ch, color, bg_color);
+    }
+
+    fn newline(&mut self) {
+        self.push('\n', [1.0, 1.0, 1.0, 1.0]);
     }
 }
 

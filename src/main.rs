@@ -18,6 +18,7 @@ mod session_state;
 mod text;
 mod typing_handler;
 mod ui;
+mod ui_blocks;
 
 mod examples;
 use examples::colored_text_demo::ColoredTextDemo;
