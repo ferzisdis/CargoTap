@@ -211,10 +211,9 @@ impl CargoTapApp {
     pub fn update_text(&mut self) {
         let start = Instant::now();
 
-        // Update the syntax highlighting cache in code_state
+        // Update the syntax highlighting setting in code_state
         self.code_state
             .set_syntax_highlighting(self.config.text.syntax_highlighting);
-        self.code_state.update_colored_cache();
 
         let ui_start = Instant::now();
         let colored_text = crate::ui::create_colored_text(self);

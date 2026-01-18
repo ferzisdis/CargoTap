@@ -116,13 +116,13 @@ fn print_state(code_state: &CodeState) {
     println!(
         "Progress: {:.1}% ({}/{})",
         code_state.get_progress() * 100.0,
-        code_state.printed_code.len(),
+        code_state.get_printed_code().len(),
         code_state.get_total_length()
     );
 
     // Visual representation
     print!("Typed: ");
-    for ch in code_state.printed_code.chars() {
+    for ch in code_state.get_printed_code().chars() {
         if ch == '\n' {
             print!("\\n");
         } else {
@@ -142,7 +142,7 @@ fn print_state(code_state: &CodeState) {
         );
     }
 
-    println!("Remaining: {}", code_state.current_code.len());
+    println!("Remaining: {}", code_state.get_current_code().len());
     println!("---");
 }
 
@@ -158,13 +158,13 @@ mod tests {
         // Test correct typing
         assert_eq!(code_state.peek_next_character(), Some('a'));
         code_state.type_character();
-        assert_eq!(code_state.printed_code, "a");
-        assert_eq!(code_state.current_code, "bc");
+        assert_eq!(code_state.get_printed_code(), "a");
+        assert_eq!(code_state.get_current_code(), "bc");
 
         // Test backspace
         code_state.backspace();
-        assert_eq!(code_state.printed_code, "");
-        assert_eq!(code_state.current_code, "abc");
+        assert_eq!(code_state.get_printed_code(), "");
+        assert_eq!(code_state.get_current_code(), "abc");
 
         // Test completion
         code_state.type_character(); // a

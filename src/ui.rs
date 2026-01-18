@@ -53,7 +53,7 @@ fn add_line_numbers_to_colored_text(
     }
 }
 
-pub fn create_colored_text(app: &CargoTapApp) -> ColoredText {
+pub fn create_colored_text(app: &mut CargoTapApp) -> ColoredText {
     if app.file_selection_mode {
         return create_file_selection_screen(app);
     }
@@ -158,15 +158,15 @@ pub fn create_colored_text(app: &CargoTapApp) -> ColoredText {
     } else {
         // Count bytes skipped by scroll offset
         let mut bytes_skipped = 0;
-        let mut lines_skipped = 0;
-        for colored_char in &full_code_colored.chars {
-            if lines_skipped >= app.scroll_offset {
+        for (line_idx, line) in full_code_colored.lines.iter().enumerate() {
+            if line_idx >= app.scroll_offset {
                 break;
             }
-            bytes_skipped += colored_char.ch.len_utf8();
-            if colored_char.ch == '\n' {
-                lines_skipped += 1;
+            for colored_char in &line.chars {
+                bytes_skipped += colored_char.ch.len_utf8();
             }
+            // Add newline byte count
+            bytes_skipped += 1;
         }
         cursor_position.saturating_sub(bytes_skipped)
     };
@@ -182,12 +182,13 @@ pub fn create_colored_text(app: &CargoTapApp) -> ColoredText {
         let mut display_with_caret = display_colored.clone();
 
         // Apply caret background to the character at cursor position
-        if cursor_position_in_display < display_with_caret.chars.len() {
-            display_with_caret.chars[cursor_position_in_display].background_color =
-                Some(caret_bg_color);
-        } else if cursor_position_in_display == display_with_caret.chars.len() {
+        if cursor_position_in_display < display_with_caret.total_char_count() {
+            if let Some(char_ref) = display_with_caret.get_char_mut(cursor_position_in_display) {
+                char_ref.background_color = Some(caret_bg_color);
+            }
+        } else if cursor_position_in_display == display_with_caret.total_char_count() {
             // Cursor at end of text - add a space with background
-            display_with_caret.chars.push(crate::text::ColoredChar {
+            display_with_caret.push_colored_char(crate::text::ColoredChar {
                 ch: ' ',
                 color: app.config.colors.text_default,
                 background_color: Some(caret_bg_color),
@@ -195,16 +196,10 @@ pub fn create_colored_text(app: &CargoTapApp) -> ColoredText {
         }
 
         // Count lines in display text for line numbering
-        let line_count = display_with_caret
-            .chars
-            .iter()
-            .filter(|c| c.ch == '\n')
-            .count()
-            + 1;
+        let line_count = display_with_caret.lines.len();
         let start_line = app.scroll_offset + 1;
         let num_digits = (line_count + app.scroll_offset).to_string().len().max(3);
 
-        let mut char_index = 0;
         let mut current_line_num = start_line;
 
         // Add first line number
@@ -224,19 +219,22 @@ pub fn create_colored_text(app: &CargoTapApp) -> ColoredText {
         colored_text.push(' ', separator_color);
 
         // Add colored code with line numbers
-        for colored_char in &display_with_caret.chars {
-            if colored_char.background_color.is_some() {
-                colored_text.push_with_background(
-                    colored_char.ch,
-                    colored_char.color,
-                    colored_char.background_color.unwrap(),
-                );
-            } else {
-                colored_text.push(colored_char.ch, colored_char.color);
+        for (line_idx, line) in display_with_caret.lines.iter().enumerate() {
+            for colored_char in &line.chars {
+                if colored_char.background_color.is_some() {
+                    colored_text.push_with_background(
+                        colored_char.ch,
+                        colored_char.color,
+                        colored_char.background_color.unwrap(),
+                    );
+                } else {
+                    colored_text.push(colored_char.ch, colored_char.color);
+                }
             }
 
-            if colored_char.ch == '\n' && char_index + 1 < display_with_caret.chars.len() {
-                // Add line number for next line
+            if line_idx + 1 < display_with_caret.lines.len() {
+                // Add newline and line number for next line
+                colored_text.push('\n', app.config.colors.text_default);
                 current_line_num += 1;
                 let line_num_str = format!("{:>width$}", current_line_num, width = num_digits);
                 let is_current = current_line.map_or(false, |cl| cl == current_line_num);
@@ -253,37 +251,37 @@ pub fn create_colored_text(app: &CargoTapApp) -> ColoredText {
                 colored_text.push('│', separator_color);
                 colored_text.push(' ', separator_color);
             }
-
-            char_index += 1;
         }
     } else {
         let caret_bg_color = [0.0, 1.0, 0.0, 0.5]; // Semi-transparent green overlay for caret
 
         let mut display_with_caret = display_colored.clone();
-
-        // Apply caret background to the character at cursor position
-        if cursor_position_in_display < display_with_caret.chars.len() {
-            display_with_caret.chars[cursor_position_in_display].background_color =
-                Some(caret_bg_color);
-        } else if cursor_position_in_display == display_with_caret.chars.len() {
+        if cursor_position_in_display < display_with_caret.total_char_count() {
+            if let Some(char_ref) = display_with_caret.get_char_mut(cursor_position_in_display) {
+                char_ref.background_color = Some(caret_bg_color);
+            }
+        } else if cursor_position_in_display == display_with_caret.total_char_count() {
             // Cursor at end of text - add a space with background
-            display_with_caret.chars.push(crate::text::ColoredChar {
+            display_with_caret.push_colored_char(crate::text::ColoredChar {
                 ch: ' ',
                 color: app.config.colors.text_default,
                 background_color: Some(caret_bg_color),
             });
         }
 
-        for colored_char in &display_with_caret.chars {
-            if colored_char.background_color.is_some() {
-                colored_text.push_with_background(
-                    colored_char.ch,
-                    colored_char.color,
-                    colored_char.background_color.unwrap(),
-                );
-            } else {
-                colored_text.push(colored_char.ch, colored_char.color);
+        for line in &display_with_caret.lines {
+            for colored_char in &line.chars {
+                if colored_char.background_color.is_some() {
+                    colored_text.push_with_background(
+                        colored_char.ch,
+                        colored_char.color,
+                        colored_char.background_color.unwrap(),
+                    );
+                } else {
+                    colored_text.push(colored_char.ch, colored_char.color);
+                }
             }
+            colored_text.push('\n', app.config.colors.text_default);
         }
     }
 
@@ -291,7 +289,11 @@ pub fn create_colored_text(app: &CargoTapApp) -> ColoredText {
         colored_text.push('\n', app.config.colors.text_default);
         colored_text.push_str("✨ Rainbow: ", app.config.colors.text_default);
         let rainbow = ColoredTextDemo::create_rainbow_text("Per-character colors work!");
-        colored_text.chars.extend(rainbow.chars);
+        for line in rainbow.lines {
+            if let Some(last_line) = colored_text.lines.last_mut() {
+                last_line.chars.extend(line.chars);
+            }
+        }
     }
 
     colored_text.push('\n', app.config.colors.text_default);
@@ -303,7 +305,7 @@ pub fn create_colored_text(app: &CargoTapApp) -> ColoredText {
     colored_text
 }
 
-pub fn create_statistics_screen(app: &CargoTapApp) -> ColoredText {
+fn create_statistics_screen(app: &mut CargoTapApp) -> ColoredText {
     let mut colored_text = ColoredText::new();
 
     colored_text.push_str(
@@ -454,7 +456,7 @@ pub fn create_statistics_screen(app: &CargoTapApp) -> ColoredText {
     colored_text
 }
 
-pub fn create_file_selection_screen(app: &CargoTapApp) -> ColoredText {
+fn create_file_selection_screen(app: &mut CargoTapApp) -> ColoredText {
     let mut colored_text = ColoredText::new();
 
     colored_text.push_str(
@@ -536,18 +538,15 @@ fn apply_scroll_offset_colored(colored_text: &ColoredText, scroll_offset: usize)
         return colored_text.clone();
     }
 
-    let mut lines_skipped = 0;
     let mut result = ColoredText::new();
 
-    for colored_char in &colored_text.chars {
-        if lines_skipped >= scroll_offset {
-            result.chars.push(crate::text::ColoredChar {
-                ch: colored_char.ch,
-                color: colored_char.color,
-                background_color: colored_char.background_color,
-            });
-        } else if colored_char.ch == '\n' {
-            lines_skipped += 1;
+    // Skip the first scroll_offset lines
+    if scroll_offset < colored_text.lines.len() {
+        // Clear the default empty line
+        result.lines.clear();
+        // Copy lines after the scroll offset
+        for line in &colored_text.lines[scroll_offset..] {
+            result.lines.push(line.clone());
         }
     }
 
@@ -569,24 +568,25 @@ mod tests {
             &mut colored_text,
             test_code,
             line_num_color,
-            line_num_color,
+            [1.0, 0.85, 0.2, 1.0],
             separator_color,
             0,
-            None,
+            Some(2),
             0,
-            [0.0, 1.0, 0.0, 1.0],
+            [0.0, 1.0, 0.0, 0.5],
         );
 
-        let result: String = colored_text.chars.iter().map(|c| c.ch).collect();
+        // The function should add line numbers and preserve newlines
+        let colored_str: String = colored_text.iter_chars().map(|c| c.ch).collect();
 
         // Should contain line numbers
-        assert!(result.contains("  1 │"));
-        assert!(result.contains("  2 │"));
-        assert!(result.contains("  3 │"));
+        assert!(colored_str.contains("  1 │"));
+        assert!(colored_str.contains("  2 │"));
+        assert!(colored_str.contains("  3 │"));
 
         // Should contain the original code
-        assert!(result.contains("fn main() {"));
-        assert!(result.contains("println!"));
+        assert!(colored_str.contains("fn main() {"));
+        assert!(colored_str.contains("println!"));
     }
 
     #[test]
@@ -600,15 +600,15 @@ mod tests {
             &mut colored_text,
             test_code,
             line_num_color,
-            line_num_color,
+            [1.0, 0.85, 0.2, 1.0],
             separator_color,
             10,
-            None,
+            Some(11),
             0,
-            [0.0, 1.0, 0.0, 1.0],
+            [0.0, 1.0, 0.0, 0.5],
         );
 
-        let result: String = colored_text.chars.iter().map(|c| c.ch).collect();
+        let result: String = colored_text.iter_chars().map(|c| c.ch).collect();
 
         // Line numbers should start from 11 (10 + 1)
         assert!(result.contains(" 11 │"));
@@ -624,6 +624,7 @@ mod tests {
         let config = Config::load();
         let code = "hello world".to_string();
         let mut code_state = CodeState::new(code);
+        let _config = config; // Mark as used to suppress warning
 
         // Type 5 characters so cursor is at position 5 (on 'o')
         for _ in 0..5 {
@@ -649,12 +650,18 @@ mod tests {
         }
 
         // Verify the character at position 5 has a background color
-        assert_eq!(colored_text.chars[5].ch, ' ');
-        assert_eq!(colored_text.chars[5].background_color, Some(caret_bg_color));
+        if let Some(char_at_5) = colored_text.get_char(5) {
+            assert_eq!(char_at_5.ch, ' ');
+            assert_eq!(char_at_5.background_color, Some(caret_bg_color));
+        }
 
         // Verify other characters don't have background
-        assert_eq!(colored_text.chars[0].background_color, None);
-        assert_eq!(colored_text.chars[4].background_color, None);
+        if let Some(char_at_0) = colored_text.get_char(0) {
+            assert_eq!(char_at_0.background_color, None);
+        }
+        if let Some(char_at_4) = colored_text.get_char(4) {
+            assert_eq!(char_at_4.background_color, None);
+        }
     }
 
     #[test]

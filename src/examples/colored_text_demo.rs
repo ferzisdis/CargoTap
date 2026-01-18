@@ -57,8 +57,10 @@ impl ColoredTextDemo {
                 in_comment = true;
                 comment_type = CommentType::Line;
                 // Remove the previous '/' and add both as comment color
-                if let Some(last_char) = colored_text.chars.pop() {
-                    colored_text.push('/', [0.5, 0.5, 0.5, 1.0]); // Gray for comments
+                if let Some(last_line) = colored_text.lines.last_mut() {
+                    if let Some(_last_char) = last_line.chars.pop() {
+                        last_line.push('/', [0.5, 0.5, 0.5, 1.0]); // Gray for comments
+                    }
                 }
                 colored_text.push(ch, [0.5, 0.5, 0.5, 1.0]);
                 prev_char = ch;
@@ -69,8 +71,10 @@ impl ColoredTextDemo {
                 in_comment = true;
                 comment_type = CommentType::Block;
                 // Remove the previous '/' and add both as comment color
-                if let Some(last_char) = colored_text.chars.pop() {
-                    colored_text.push('/', [0.5, 0.5, 0.5, 1.0]);
+                if let Some(last_line) = colored_text.lines.last_mut() {
+                    if let Some(_last_char) = last_line.chars.pop() {
+                        last_line.push('/', [0.5, 0.5, 0.5, 1.0]);
+                    }
                 }
                 colored_text.push(ch, [0.5, 0.5, 0.5, 1.0]);
                 prev_char = ch;
@@ -231,39 +235,49 @@ impl ColoredTextDemo {
         let mut colored_text = ColoredText::new();
 
         // Add header
-        colored_text.chars.extend(Self::create_header_demo().chars);
+        let header = Self::create_header_demo();
+        for line in header.lines {
+            colored_text.lines.push(line);
+        }
 
         // Add rainbow text demo
         colored_text.push_str("Rainbow Text: ", [1.0, 1.0, 1.0, 1.0]);
-        colored_text
-            .chars
-            .extend(Self::create_rainbow_text("Hello Rainbow World!").chars);
+        let rainbow = Self::create_rainbow_text("Hello Rainbow World!");
+        for line in rainbow.lines {
+            if let Some(last_line) = colored_text.lines.last_mut() {
+                last_line.chars.extend(line.chars);
+            }
+        }
         colored_text.push('\n', [1.0, 1.0, 1.0, 1.0]);
         colored_text.push('\n', [1.0, 1.0, 1.0, 1.0]);
 
         // Add gradient text demo
         colored_text.push_str("Gradient Text: ", [1.0, 1.0, 1.0, 1.0]);
-        colored_text.chars.extend(
-            Self::create_gradient_text(
-                "This text fades from red to blue",
-                [1.0, 0.0, 0.0, 1.0], // Red
-                [0.0, 0.0, 1.0, 1.0], // Blue
-            )
-            .chars,
+        let gradient = Self::create_gradient_text(
+            "This text fades from red to blue",
+            [1.0, 0.0, 0.0, 1.0], // Red
+            [0.0, 0.0, 1.0, 1.0], // Blue
         );
+        for line in gradient.lines {
+            if let Some(last_line) = colored_text.lines.last_mut() {
+                last_line.chars.extend(line.chars);
+            }
+        }
         colored_text.push('\n', [1.0, 1.0, 1.0, 1.0]);
         colored_text.push('\n', [1.0, 1.0, 1.0, 1.0]);
 
         // Add pulse text demo
         colored_text.push_str("Pulse Text: ", [1.0, 1.0, 1.0, 1.0]);
-        colored_text.chars.extend(
-            Self::create_pulse_text(
-                "This text has varying intensity",
-                [0.0, 1.0, 0.0], // Green base
-                0.8,             // Pulse strength
-            )
-            .chars,
+        let pulse = Self::create_pulse_text(
+            "This text has varying intensity",
+            [0.0, 1.0, 0.0], // Green base
+            0.8,             // Pulse strength
         );
+        for line in pulse.lines {
+            if let Some(last_line) = colored_text.lines.last_mut() {
+                last_line.chars.extend(line.chars);
+            }
+        }
         colored_text.push('\n', [1.0, 1.0, 1.0, 1.0]);
         colored_text.push('\n', [1.0, 1.0, 1.0, 1.0]);
 
@@ -278,9 +292,10 @@ impl ColoredTextDemo {
         None => println!("Nothing here"),
     }
 }"#;
-        colored_text
-            .chars
-            .extend(Self::create_syntax_highlighted_rust(sample_code).chars);
+        let highlighted = Self::create_syntax_highlighted_rust(sample_code);
+        for line in highlighted.lines {
+            colored_text.lines.push(line);
+        }
 
         colored_text
     }
@@ -299,9 +314,10 @@ pub fn run_colored_text_examples() -> Result<()> {
 
     // Example 1: Simple rainbow text
     let rainbow = ColoredTextDemo::create_rainbow_text("RAINBOW");
+    let rainbow_char_count: usize = rainbow.lines.iter().map(|line| line.chars.len()).sum();
     println!(
         "Created rainbow text with {} characters",
-        rainbow.chars.len()
+        rainbow_char_count
     );
 
     // Example 2: Gradient text
@@ -310,9 +326,10 @@ pub fn run_colored_text_examples() -> Result<()> {
         [1.0, 0.0, 0.0, 1.0], // Red start
         [0.0, 1.0, 0.0, 1.0], // Green end
     );
+    let gradient_char_count: usize = gradient.lines.iter().map(|line| line.chars.len()).sum();
     println!(
         "Created gradient text with {} characters",
-        gradient.chars.len()
+        gradient_char_count
     );
 
     // Example 3: Syntax highlighted code
@@ -320,16 +337,22 @@ pub fn run_colored_text_examples() -> Result<()> {
         println!("Hello, colored world!");
     }"#;
     let highlighted = ColoredTextDemo::create_syntax_highlighted_rust(code);
+    let highlighted_char_count: usize = highlighted.lines.iter().map(|line| line.chars.len()).sum();
     println!(
         "Created syntax highlighted code with {} characters",
-        highlighted.chars.len()
+        highlighted_char_count
     );
 
     // Example 4: Comprehensive demo
     let comprehensive = ColoredTextDemo::create_comprehensive_demo();
+    let comprehensive_char_count: usize = comprehensive
+        .lines
+        .iter()
+        .map(|line| line.chars.len())
+        .sum();
     println!(
         "Created comprehensive demo with {} characters",
-        comprehensive.chars.len()
+        comprehensive_char_count
     );
 
     Ok(())
@@ -342,11 +365,14 @@ mod tests {
     #[test]
     fn test_rainbow_text_creation() {
         let rainbow = ColoredTextDemo::create_rainbow_text("TEST");
-        assert_eq!(rainbow.chars.len(), 4);
+        let char_count: usize = rainbow.lines.iter().map(|line| line.chars.len()).sum();
+        assert_eq!(char_count, 4);
 
-        // Check that each character has a different color
-        for i in 0..rainbow.chars.len() - 1 {
-            assert_ne!(rainbow.chars[i].color, rainbow.chars[i + 1].color);
+        // Check that each character has a different color in the first line
+        if let Some(first_line) = rainbow.lines.first() {
+            for i in 0..first_line.chars.len() - 1 {
+                assert_ne!(first_line.chars[i].color, first_line.chars[i + 1].color);
+            }
         }
     }
 
@@ -358,13 +384,18 @@ mod tests {
             [0.0, 1.0, 0.0, 1.0],
         );
 
-        assert_eq!(gradient.chars.len(), 3);
+        let char_count: usize = gradient.lines.iter().map(|line| line.chars.len()).sum();
+        assert_eq!(char_count, 3);
 
-        // First character should be closer to start color (red)
-        assert!(gradient.chars[0].color[0] > gradient.chars[2].color[0]); // More red
+        if let Some(first_line) = gradient.lines.first() {
+            assert_eq!(first_line.chars.len(), 3);
 
-        // Last character should be closer to end color (green)
-        assert!(gradient.chars[2].color[1] > gradient.chars[0].color[1]); // More green
+            // First character should be closer to start color (red)
+            assert!(first_line.chars[0].color[0] > first_line.chars[2].color[0]); // More red
+
+            // Last character should be closer to end color (green)
+            assert!(first_line.chars[2].color[1] > first_line.chars[0].color[1]); // More green
+        }
     }
 
     #[test]
@@ -372,12 +403,15 @@ mod tests {
         let code = "fn main() {}";
         let highlighted = ColoredTextDemo::create_syntax_highlighted_rust(code);
 
-        assert_eq!(highlighted.chars.len(), code.len());
+        let char_count: usize = highlighted.lines.iter().map(|line| line.chars.len()).sum();
+        assert_eq!(char_count, code.len());
 
         // Check that 'fn' keyword has the expected color
         let fn_color = ColoredTextDemo::get_keyword_color("fn");
-        assert_eq!(highlighted.chars[0].color, fn_color);
-        assert_eq!(highlighted.chars[1].color, fn_color);
+        if let Some(first_line) = highlighted.lines.first() {
+            assert_eq!(first_line.chars[0].color, fn_color);
+            assert_eq!(first_line.chars[1].color, fn_color);
+        }
     }
 
     #[test]

@@ -46,25 +46,13 @@ pub struct ColoredChar {
 }
 
 #[derive(Debug, Clone)]
-pub struct ColoredText {
+pub struct ColoredLine {
     pub chars: Vec<ColoredChar>,
 }
 
-impl ColoredText {
+impl ColoredLine {
     pub fn new() -> Self {
         Self { chars: Vec::new() }
-    }
-
-    pub fn from_str_with_color(text: &str, color: [f32; 4]) -> Self {
-        let chars = text
-            .chars()
-            .map(|ch| ColoredChar {
-                ch,
-                color,
-                background_color: None,
-            })
-            .collect();
-        Self { chars }
     }
 
     pub fn push(&mut self, ch: char, color: [f32; 4]) {
@@ -86,6 +74,101 @@ impl ColoredText {
     pub fn push_str(&mut self, text: &str, color: [f32; 4]) {
         for ch in text.chars() {
             self.push(ch, color);
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ColoredText {
+    pub lines: Vec<ColoredLine>,
+}
+
+impl ColoredText {
+    pub fn new() -> Self {
+        Self {
+            lines: vec![ColoredLine::new()],
+        }
+    }
+
+    pub fn from_str_with_color(text: &str, color: [f32; 4]) -> Self {
+        let mut colored_text = Self::new();
+        for ch in text.chars() {
+            if ch == '\n' {
+                colored_text.lines.push(ColoredLine::new());
+            } else {
+                if let Some(last_line) = colored_text.lines.last_mut() {
+                    last_line.push(ch, color);
+                }
+            }
+        }
+        colored_text
+    }
+
+    pub fn push(&mut self, ch: char, color: [f32; 4]) {
+        if ch == '\n' {
+            self.lines.push(ColoredLine::new());
+        } else {
+            if let Some(last_line) = self.lines.last_mut() {
+                last_line.push(ch, color);
+            }
+        }
+    }
+
+    pub fn push_with_background(&mut self, ch: char, color: [f32; 4], background_color: [f32; 4]) {
+        if ch == '\n' {
+            self.lines.push(ColoredLine::new());
+        } else {
+            if let Some(last_line) = self.lines.last_mut() {
+                last_line.push_with_background(ch, color, background_color);
+            }
+        }
+    }
+
+    pub fn push_str(&mut self, text: &str, color: [f32; 4]) {
+        for ch in text.chars() {
+            self.push(ch, color);
+        }
+    }
+
+    pub fn iter_chars(&self) -> impl Iterator<Item = &ColoredChar> {
+        self.lines.iter().flat_map(|line| line.chars.iter())
+    }
+
+    /// Returns the total number of characters across all lines
+    pub fn total_char_count(&self) -> usize {
+        self.lines.iter().map(|line| line.chars.len()).sum()
+    }
+
+    /// Gets a mutable reference to a character by absolute index (across all lines)
+    pub fn get_char_mut(&mut self, mut index: usize) -> Option<&mut ColoredChar> {
+        for line in &mut self.lines {
+            if index < line.chars.len() {
+                return line.chars.get_mut(index);
+            }
+            index -= line.chars.len();
+        }
+        None
+    }
+
+    /// Gets a reference to a character by absolute index (across all lines)
+    pub fn get_char(&self, mut index: usize) -> Option<&ColoredChar> {
+        for line in &self.lines {
+            if index < line.chars.len() {
+                return line.chars.get(index);
+            }
+            index -= line.chars.len();
+        }
+        None
+    }
+
+    /// Pushes a colored char at the end (respecting line boundaries)
+    pub fn push_colored_char(&mut self, colored_char: ColoredChar) {
+        if colored_char.ch == '\n' {
+            self.lines.push(ColoredLine::new());
+        } else {
+            if let Some(last_line) = self.lines.last_mut() {
+                last_line.chars.push(colored_char);
+            }
         }
     }
 }
@@ -179,7 +262,8 @@ impl TextSystem {
     }
 
     pub fn update_text_with_settings(&mut self, colored_text: &ColoredText) -> Result<()> {
-        let mut vertices = Vec::with_capacity(colored_text.chars.len() * 6 as usize);
+        let total_chars: usize = colored_text.lines.iter().map(|line| line.chars.len()).sum();
+        let mut vertices = Vec::with_capacity(total_chars * 6);
         let scale = PxScale::from(self.current_settings.font_size);
         let scaled_font = self.font.as_scaled(scale);
 
@@ -187,118 +271,119 @@ impl TextSystem {
         let mut cursor_y = self.current_settings.position[1];
         let line_height = scaled_font.height();
 
-        for colored_char in &colored_text.chars {
-            let ch = colored_char.ch;
-            let char_color = colored_char.color;
-            if ch == '\n' {
-                cursor_x = 10.0;
-                cursor_y += line_height;
-                continue;
+        for line in &colored_text.lines {
+            for colored_char in &line.chars {
+                let ch = colored_char.ch;
+                let char_color = colored_char.color;
+
+                if ch == '\r' {
+                    continue;
+                }
+
+                // Calculate advance width for this character (needed for both glyph and background)
+                let advance_width = if let Some(glyph_info) = self.glyph_infos.get(&ch) {
+                    glyph_info.advance
+                } else {
+                    let glyph_id = self.font.glyph_id(ch);
+                    scaled_font.h_advance(glyph_id)
+                };
+
+                // Get glyph info from atlas
+                if let Some(glyph_info) = self.glyph_infos.get(&ch) {
+                    let pos_x = cursor_x + glyph_info.bearing[0];
+                    let pos_y = cursor_y + glyph_info.bearing[1];
+
+                    // Create quad vertices for this glyph using atlas UV coordinates
+                    let glyph_vertices = [
+                        TextVertex {
+                            position: [pos_x, pos_y],
+                            tex_coords: [glyph_info.uv_min[0], glyph_info.uv_min[1]],
+                            color: char_color,
+                        },
+                        TextVertex {
+                            position: [pos_x + glyph_info.size[0], pos_y],
+                            tex_coords: [glyph_info.uv_max[0], glyph_info.uv_min[1]],
+                            color: char_color,
+                        },
+                        TextVertex {
+                            position: [pos_x, pos_y + glyph_info.size[1]],
+                            tex_coords: [glyph_info.uv_min[0], glyph_info.uv_max[1]],
+                            color: char_color,
+                        },
+                        TextVertex {
+                            position: [pos_x + glyph_info.size[0], pos_y],
+                            tex_coords: [glyph_info.uv_max[0], glyph_info.uv_min[1]],
+                            color: char_color,
+                        },
+                        TextVertex {
+                            position: [pos_x + glyph_info.size[0], pos_y + glyph_info.size[1]],
+                            tex_coords: [glyph_info.uv_max[0], glyph_info.uv_max[1]],
+                            color: char_color,
+                        },
+                        TextVertex {
+                            position: [pos_x, pos_y + glyph_info.size[1]],
+                            tex_coords: [glyph_info.uv_min[0], glyph_info.uv_max[1]],
+                            color: char_color,
+                        },
+                    ];
+
+                    vertices.extend_from_slice(&glyph_vertices);
+                }
+
+                // Render caret overlay AFTER the character (or for whitespace without glyphs)
+                if let Some(bg_color) = colored_char.background_color {
+                    // Create a caret overlay quad that covers the character advance
+                    // The background should start at the top of the line, not at cursor_y
+                    let bg_x = cursor_x;
+                    let bg_y = cursor_y - scaled_font.ascent();
+                    let bg_width = advance_width;
+                    let bg_height = line_height;
+
+                    // Use solid color rendering (UV [0,0] is handled specially in shader)
+                    let bg_uv = [0.0, 0.0];
+
+                    let bg_vertices = [
+                        TextVertex {
+                            position: [bg_x, bg_y],
+                            tex_coords: bg_uv,
+                            color: bg_color,
+                        },
+                        TextVertex {
+                            position: [bg_x + bg_width, bg_y],
+                            tex_coords: bg_uv,
+                            color: bg_color,
+                        },
+                        TextVertex {
+                            position: [bg_x, bg_y + bg_height],
+                            tex_coords: bg_uv,
+                            color: bg_color,
+                        },
+                        TextVertex {
+                            position: [bg_x + bg_width, bg_y],
+                            tex_coords: bg_uv,
+                            color: bg_color,
+                        },
+                        TextVertex {
+                            position: [bg_x + bg_width, bg_y + bg_height],
+                            tex_coords: bg_uv,
+                            color: bg_color,
+                        },
+                        TextVertex {
+                            position: [bg_x, bg_y + bg_height],
+                            tex_coords: bg_uv,
+                            color: bg_color,
+                        },
+                    ];
+
+                    vertices.extend_from_slice(&bg_vertices);
+                }
+
+                cursor_x += advance_width;
             }
 
-            if ch == '\r' {
-                continue;
-            }
-
-            // Calculate advance width for this character (needed for both glyph and background)
-            let advance_width = if let Some(glyph_info) = self.glyph_infos.get(&ch) {
-                glyph_info.advance
-            } else {
-                let glyph_id = self.font.glyph_id(ch);
-                scaled_font.h_advance(glyph_id)
-            };
-
-            // Get glyph info from atlas
-            if let Some(glyph_info) = self.glyph_infos.get(&ch) {
-                let pos_x = cursor_x + glyph_info.bearing[0];
-                let pos_y = cursor_y + glyph_info.bearing[1];
-
-                // Create quad vertices for this glyph using atlas UV coordinates
-                let glyph_vertices = [
-                    TextVertex {
-                        position: [pos_x, pos_y],
-                        tex_coords: [glyph_info.uv_min[0], glyph_info.uv_min[1]],
-                        color: char_color,
-                    },
-                    TextVertex {
-                        position: [pos_x + glyph_info.size[0], pos_y],
-                        tex_coords: [glyph_info.uv_max[0], glyph_info.uv_min[1]],
-                        color: char_color,
-                    },
-                    TextVertex {
-                        position: [pos_x, pos_y + glyph_info.size[1]],
-                        tex_coords: [glyph_info.uv_min[0], glyph_info.uv_max[1]],
-                        color: char_color,
-                    },
-                    TextVertex {
-                        position: [pos_x + glyph_info.size[0], pos_y],
-                        tex_coords: [glyph_info.uv_max[0], glyph_info.uv_min[1]],
-                        color: char_color,
-                    },
-                    TextVertex {
-                        position: [pos_x + glyph_info.size[0], pos_y + glyph_info.size[1]],
-                        tex_coords: [glyph_info.uv_max[0], glyph_info.uv_max[1]],
-                        color: char_color,
-                    },
-                    TextVertex {
-                        position: [pos_x, pos_y + glyph_info.size[1]],
-                        tex_coords: [glyph_info.uv_min[0], glyph_info.uv_max[1]],
-                        color: char_color,
-                    },
-                ];
-
-                vertices.extend_from_slice(&glyph_vertices);
-            }
-
-            // Render caret overlay AFTER the character (or for whitespace without glyphs)
-            if let Some(bg_color) = colored_char.background_color {
-                // Create a caret overlay quad that covers the character advance
-                // The background should start at the top of the line, not at cursor_y
-                let bg_x = cursor_x;
-                let bg_y = cursor_y - scaled_font.ascent();
-                let bg_width = advance_width;
-                let bg_height = line_height;
-
-                // Use solid color rendering (UV [0,0] is handled specially in shader)
-                let bg_uv = [0.0, 0.0];
-
-                let bg_vertices = [
-                    TextVertex {
-                        position: [bg_x, bg_y],
-                        tex_coords: bg_uv,
-                        color: bg_color,
-                    },
-                    TextVertex {
-                        position: [bg_x + bg_width, bg_y],
-                        tex_coords: bg_uv,
-                        color: bg_color,
-                    },
-                    TextVertex {
-                        position: [bg_x, bg_y + bg_height],
-                        tex_coords: bg_uv,
-                        color: bg_color,
-                    },
-                    TextVertex {
-                        position: [bg_x + bg_width, bg_y],
-                        tex_coords: bg_uv,
-                        color: bg_color,
-                    },
-                    TextVertex {
-                        position: [bg_x + bg_width, bg_y + bg_height],
-                        tex_coords: bg_uv,
-                        color: bg_color,
-                    },
-                    TextVertex {
-                        position: [bg_x, bg_y + bg_height],
-                        tex_coords: bg_uv,
-                        color: bg_color,
-                    },
-                ];
-
-                vertices.extend_from_slice(&bg_vertices);
-            }
-
-            cursor_x += advance_width;
+            // Move to next line
+            cursor_x = 10.0;
+            cursor_y += line_height;
         }
 
         self.update_vertex_buffer(vertices)?;

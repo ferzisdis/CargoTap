@@ -103,7 +103,7 @@ fn handle_scroll_down(app: &mut CargoTapApp) {
         info!(
             "Typing Progress: {:.1}% ({}/{}) | View Offset: {} lines",
             app.code_state.get_progress() * 100.0,
-            app.code_state.printed_code.len(),
+            app.code_state.get_printed_code().len(),
             app.code_state.get_total_length(),
             app.scroll_offset
         );
@@ -134,7 +134,7 @@ fn handle_scroll_up(app: &mut CargoTapApp) {
         info!(
             "Typing Progress: {:.1}% ({}/{}) | View Offset: {} lines",
             app.code_state.get_progress() * 100.0,
-            app.code_state.printed_code.len(),
+            app.code_state.get_printed_code().len(),
             app.code_state.get_total_length(),
             app.scroll_offset
         );
@@ -193,7 +193,7 @@ fn handle_type_character(app: &mut CargoTapApp, typed_char: char) {
                     info!(
                         "Progress: {:.1}% ({}/{})",
                         app.code_state.get_progress() * 100.0,
-                        app.code_state.printed_code.len(),
+                        app.code_state.get_printed_code().len(),
                         app.code_state.get_total_length()
                     );
                 }
@@ -242,7 +242,7 @@ fn handle_backspace(app: &mut CargoTapApp) {
             info!(
                 "Progress: {:.1}% ({}/{})",
                 app.code_state.get_progress() * 100.0,
-                app.code_state.printed_code.len(),
+                app.code_state.get_printed_code().len(),
                 app.code_state.get_total_length()
             );
         }
@@ -283,7 +283,7 @@ fn handle_enter(app: &mut CargoTapApp) {
                     info!(
                         "Progress: {:.1}% ({}/{})",
                         app.code_state.get_progress() * 100.0,
-                        app.code_state.printed_code.len(),
+                        app.code_state.get_printed_code().len(),
                         app.code_state.get_total_length()
                     );
                 }
@@ -307,7 +307,7 @@ fn handle_tab(app: &mut CargoTapApp) {
             info!(
                 "Progress: {:.1}% ({}/{})",
                 app.code_state.get_progress() * 100.0,
-                app.code_state.printed_code.len(),
+                app.code_state.get_printed_code().len(),
                 app.code_state.get_total_length()
             );
         }
