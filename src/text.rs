@@ -149,10 +149,14 @@ impl ColoredText {
     /// Gets a mutable reference to a character by absolute index (across all lines)
     pub fn get_char_mut(&mut self, mut index: usize) -> Option<&mut ColoredChar> {
         for line in &mut self.lines {
-            if index < line.chars.len() {
-                return line.chars.get_mut(index);
+            if index <= line.chars.len() {
+                if index < line.chars.len() {
+                    return line.chars.get_mut(index);
+                } else {
+                    return None;
+                }
             }
-            index -= line.chars.len();
+            index -= line.chars.len() + 1;
         }
         None
     }
