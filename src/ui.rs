@@ -4,6 +4,8 @@ use crate::ui_blocks::{
     CodeDisplayBlock, FileInfoBlock, FooterBlock, FpsBlock, HeaderBlock, ProgressBlock,
     RainbowEffectsBlock, SeparatorBlock, SessionStateBlock, UiBlock,
 };
+use std::fs;
+use std::path::Path;
 
 pub fn create_colored_text(app: &mut CargoTapApp) -> ColoredText {
     if app.file_selection_mode {
@@ -212,6 +214,94 @@ fn create_file_selection_screen(app: &mut CargoTapApp) -> ColoredText {
         [0.5, 0.8, 1.0, 1.0],
     );
 
+    let dir_path = get_directory_from_path(&app.file_input_buffer);
+
+    if let Ok(entries) = fs::read_dir(&dir_path) {
+        colored_text.push_str(
+            &format!("Contents of directory: {}\n", dir_path),
+            [0.7, 0.7, 0.7, 1.0],
+        );
+        colored_text.push_str(
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
+            [0.5, 0.8, 1.0, 1.0],
+        );
+
+        let mut dirs: Vec<_> = Vec::new();
+        let mut files: Vec<_> = Vec::new();
+
+        for entry in entries.filter_map(|e| e.ok()) {
+            if entry.path().is_dir() {
+                dirs.push(entry);
+            } else if entry.path().is_file() {
+                files.push(entry);
+            }
+        }
+
+        dirs.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+        files.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+
+        for entry in dirs.iter().take(10) {
+            let file_name = entry.file_name();
+            let file_name_str = file_name.to_string_lossy();
+
+            colored_text.push_str("  📁 ", [0.5, 0.7, 1.0, 1.0]);
+            colored_text.push_str(&file_name_str, [0.5, 0.7, 1.0, 1.0]);
+            colored_text.push_str("/", [0.5, 0.7, 1.0, 1.0]);
+
+            let padding = 40_usize.saturating_sub(file_name_str.len() + 1);
+            colored_text.push_str(&" ".repeat(padding), [0.7, 0.7, 0.7, 1.0]);
+            colored_text.push_str("<DIR>", [0.5, 0.7, 1.0, 1.0]);
+            colored_text.push_str("\n", [0.7, 0.7, 0.7, 1.0]);
+        }
+
+        if dirs.len() > 10 {
+            colored_text.push_str(
+                &format!("  ... and {} more directories\n", dirs.len() - 10),
+                [0.6, 0.6, 0.6, 1.0],
+            );
+        }
+
+        for entry in files.iter().take(20) {
+            let path = entry.path();
+            let file_name = entry.file_name();
+            let file_name_str = file_name.to_string_lossy();
+
+            let file_size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+
+            let size_str = format_file_size(file_size);
+
+            let full_path = path.to_string_lossy().to_string();
+            let has_progress = app.progress_storage.get_progress(&full_path).is_some();
+
+            if has_progress {
+                colored_text.push_str("  ★ ", [1.0, 0.84, 0.0, 1.0]);
+                colored_text.push_str(&file_name_str, [1.0, 1.0, 0.0, 1.0]);
+            } else {
+                colored_text.push_str("    ", [0.7, 0.7, 0.7, 1.0]);
+                colored_text.push_str(&file_name_str, [0.9, 0.9, 0.9, 1.0]);
+            }
+
+            let padding = 40_usize.saturating_sub(file_name_str.len());
+            colored_text.push_str(&" ".repeat(padding), [0.7, 0.7, 0.7, 1.0]);
+            colored_text.push_str(&size_str, [0.5, 0.8, 1.0, 1.0]);
+            colored_text.push_str("\n", [0.7, 0.7, 0.7, 1.0]);
+        }
+
+        if files.len() > 20 {
+            colored_text.push_str(
+                &format!("  ... and {} more files\n", files.len() - 20),
+                [0.6, 0.6, 0.6, 1.0],
+            );
+        }
+
+        colored_text.push_str("\n", app.config.colors.text_default);
+    }
+
+    colored_text.push_str(
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
+        [0.5, 0.8, 1.0, 1.0],
+    );
+
     colored_text.push_str("Current file: ", [0.7, 0.7, 0.7, 1.0]);
     colored_text.push_str(&app.current_file_path, [0.5, 1.0, 1.0, 1.0]);
     colored_text.push_str("\n\n", app.config.colors.text_default);
@@ -224,22 +314,48 @@ fn create_file_selection_screen(app: &mut CargoTapApp) -> ColoredText {
     colored_text.push_str("  • Press ENTER to load the file\n", [0.7, 0.7, 0.7, 1.0]);
     colored_text.push_str("  • Press ESC to cancel\n", [0.7, 0.7, 0.7, 1.0]);
     colored_text.push_str(
-        "  • Use BACKSPACE to delete characters\n\n",
+        "  • Use BACKSPACE to delete characters\n",
+        [0.7, 0.7, 0.7, 1.0],
+    );
+    colored_text.push_str(
+        "  • Files with ★ have saved progress\n\n",
         [0.7, 0.7, 0.7, 1.0],
     );
 
-    colored_text.push_str("Examples:\n", [0.0, 1.0, 0.5, 1.0]);
-    colored_text.push_str("  • src/main.rs\n", app.config.colors.text_default);
-    colored_text.push_str(
-        "  • /absolute/path/to/file.rs\n",
-        app.config.colors.text_default,
-    );
-    colored_text.push_str(
-        "  • ../other_project/code.rs\n",
-        app.config.colors.text_default,
-    );
-
     colored_text
+}
+
+fn get_directory_from_path(path: &str) -> String {
+    let path_obj = Path::new(path);
+
+    if path_obj.is_dir() {
+        return path.to_string();
+    }
+
+    if let Some(parent) = path_obj.parent() {
+        if parent.as_os_str().is_empty() {
+            return ".".to_string();
+        }
+        return parent.to_string_lossy().to_string();
+    }
+
+    ".".to_string()
+}
+
+fn format_file_size(size: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * 1024;
+    const GB: u64 = MB * 1024;
+
+    if size >= GB {
+        format!("{:.2} GB", size as f64 / GB as f64)
+    } else if size >= MB {
+        format!("{:.2} MB", size as f64 / MB as f64)
+    } else if size >= KB {
+        format!("{:.2} KB", size as f64 / KB as f64)
+    } else {
+        format!("{} B", size)
+    }
 }
 
 #[cfg(test)]
