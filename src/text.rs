@@ -85,6 +85,88 @@ pub trait TextCanvas {
     fn newline(&mut self);
 }
 
+pub enum WriteResult {
+    Written,
+    Overflow { writed: usize },
+}
+
+pub trait TextSurface {
+    fn write_line(&mut self, line: &ColoredLine) -> WriteResult;
+    fn write_line_wordwrap(&mut self, line: &ColoredLine) -> WriteResult;
+    fn write_char(&mut self, ch: &ColoredChar) -> WriteResult;
+}
+
+pub struct TextSurfaceWriter<'a> {
+    surface: &'a mut dyn TextSurface,
+    current_line: ColoredLine,
+}
+
+impl<'a> TextSurfaceWriter<'a> {
+    pub fn new(surface: &'a mut dyn TextSurface) -> Self {
+        Self {
+            surface,
+            current_line: ColoredLine::new(),
+        }
+    }
+
+    pub fn push_char(&mut self, ch: char, color: [f32; 4]) {
+        if ch == '\n' {
+            self.flush_line();
+        } else {
+            self.current_line.push(ch, color);
+        }
+    }
+
+    pub fn push_str(&mut self, text: &str, color: [f32; 4]) {
+        for ch in text.chars() {
+            self.push_char(ch, color);
+        }
+    }
+
+    pub fn push_with_background(&mut self, ch: char, color: [f32; 4], bg_color: [f32; 4]) {
+        if ch == '\n' {
+            self.flush_line();
+        } else {
+            self.current_line.push_with_background(ch, color, bg_color);
+        }
+    }
+
+    pub fn newline(&mut self) {
+        self.flush_line();
+    }
+
+    fn flush_line(&mut self) {
+        let line = std::mem::replace(&mut self.current_line, ColoredLine::new());
+        self.surface.write_line(&line);
+    }
+}
+
+impl<'a> Drop for TextSurfaceWriter<'a> {
+    fn drop(&mut self) {
+        if !self.current_line.chars.is_empty() {
+            self.flush_line();
+        }
+    }
+}
+
+impl<'a> TextCanvas for TextSurfaceWriter<'a> {
+    fn push_char(&mut self, ch: char, color: [f32; 4]) {
+        TextSurfaceWriter::push_char(self, ch, color);
+    }
+
+    fn push_str(&mut self, text: &str, color: [f32; 4]) {
+        TextSurfaceWriter::push_str(self, text, color);
+    }
+
+    fn push_with_background(&mut self, ch: char, color: [f32; 4], bg_color: [f32; 4]) {
+        TextSurfaceWriter::push_with_background(self, ch, color, bg_color);
+    }
+
+    fn newline(&mut self) {
+        TextSurfaceWriter::newline(self);
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ColoredText {
     pub lines: Vec<ColoredLine>,
@@ -202,6 +284,31 @@ impl TextCanvas for ColoredText {
     }
 }
 
+impl TextSurface for ColoredText {
+    fn write_line(&mut self, line: &ColoredLine) -> WriteResult {
+        if let Some(last_line) = self.lines.last_mut() {
+            last_line.chars.extend(line.chars.iter().cloned());
+        }
+        self.lines.push(ColoredLine::new());
+        WriteResult::Written
+    }
+
+    fn write_line_wordwrap(&mut self, line: &ColoredLine) -> WriteResult {
+        self.write_line(line)
+    }
+
+    fn write_char(&mut self, ch: &ColoredChar) -> WriteResult {
+        if ch.ch == '\n' {
+            self.lines.push(ColoredLine::new());
+        } else {
+            if let Some(last_line) = self.lines.last_mut() {
+                last_line.chars.push(ch.clone());
+            }
+        }
+        WriteResult::Written
+    }
+}
+
 impl Default for TextRenderSettings {
     fn default() -> Self {
         Self {
@@ -250,6 +357,7 @@ pub struct TextSystem {
     glyph_infos: HashMap<char, GlyphInfo>,
     descriptor_set: Option<Arc<DescriptorSet>>,
     current_settings: TextRenderSettings,
+    window_size: [f32; 2],
 }
 
 impl TextSystem {
@@ -287,6 +395,7 @@ impl TextSystem {
             glyph_infos: HashMap::new(),
             descriptor_set: None,
             current_settings: settings,
+            window_size: [800.0, 600.0],
         })
     }
 
@@ -727,7 +836,6 @@ impl TextSystem {
         command_buffer: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
         text_pipeline: Arc<GraphicsPipeline>,
         text_pipeline_layout: Arc<PipelineLayout>,
-        screen_size: [f32; 2],
     ) -> Result<()> {
         if let (Some(vertex_buffer), Some(descriptor_set)) =
             (&self.vertex_buffer, &self.descriptor_set)
@@ -740,7 +848,7 @@ impl TextSystem {
             if !vertex_buffer.len() > 0 {
                 // Set push constants
                 let push_constants = TextPushConstants {
-                    screen_size,
+                    screen_size: self.window_size,
                     _padding: [0.0, 0.0],
                     text_color: self.current_settings.color,
                 };
@@ -778,5 +886,13 @@ impl TextSystem {
 
     pub fn has_text(&self) -> bool {
         self.vertex_buffer.is_some() && self.descriptor_set.is_some()
+    }
+
+    pub fn update_window_size(&mut self, width: f32, height: f32) {
+        self.window_size = [width, height];
+    }
+
+    pub fn get_window_size(&self) -> [f32; 2] {
+        self.window_size
     }
 }

@@ -216,7 +216,8 @@ impl CargoTapApp {
             .set_syntax_highlighting(self.config.text.syntax_highlighting);
 
         let ui_start = Instant::now();
-        let colored_text = crate::ui::create_colored_text(self);
+        let mut colored_text = crate::text::ColoredText::new();
+        crate::ui::create_colored_text(self, &mut colored_text);
         self.ui_generation_time_ms = ui_start.elapsed().as_secs_f64() * 1000.0;
 
         if let Some(ref text_system) = self.text_system {

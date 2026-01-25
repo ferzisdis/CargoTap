@@ -107,6 +107,13 @@ impl VulkanRenderer {
             .as_ref()
             .map(|rcx| rcx.text_pipeline_layout.clone())
     }
+
+    pub fn get_window_size(&self) -> Option<[f32; 2]> {
+        self.rcx.as_ref().map(|rcx| {
+            let size = rcx.window.inner_size();
+            [size.width as f32, size.height as f32]
+        })
+    }
 }
 
 impl ApplicationHandler for VulkanRenderer {
@@ -130,8 +137,16 @@ impl ApplicationHandler for VulkanRenderer {
             WindowEvent::CloseRequested => {
                 event_loop.exit();
             }
-            WindowEvent::Resized(_) => {
+            WindowEvent::Resized(new_size) => {
                 rcx.recreate_swapchain = true;
+
+                // Update TextSystem with new window size
+                if let Some(text_system) = &self.text_system {
+                    if let Ok(mut text_system) = text_system.lock() {
+                        text_system
+                            .update_window_size(new_size.width as f32, new_size.height as f32);
+                    }
+                }
             }
             WindowEvent::RedrawRequested => {
                 let window_size = rcx.window.inner_size();
@@ -153,6 +168,16 @@ impl ApplicationHandler for VulkanRenderer {
                 // the dynamic state viewport.
                 if rcx.recreate_swapchain {
                     swapchain::recreate_swapchain(rcx, window_size);
+
+                    // Update TextSystem with current window size after swapchain recreation
+                    if let Some(text_system) = &self.text_system {
+                        if let Ok(mut text_system) = text_system.lock() {
+                            text_system.update_window_size(
+                                window_size.width as f32,
+                                window_size.height as f32,
+                            );
+                        }
+                    }
                 }
 
                 // Acquire next image from swapchain
@@ -203,12 +228,10 @@ impl ApplicationHandler for VulkanRenderer {
                     if let Ok(text_system) = text_system.lock() {
                         if text_system.has_text() {
                             log::debug!("Drawing text to screen {:?}", window_size);
-                            let screen_size = [window_size.width as f32, window_size.height as f32];
                             if let Err(e) = text_system.draw(
                                 &mut builder,
                                 rcx.text_pipeline.clone(),
                                 rcx.text_pipeline_layout.clone(),
-                                screen_size,
                             ) {
                                 log::warn!("Failed to draw text: {}", e);
                             }
