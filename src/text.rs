@@ -358,6 +358,7 @@ pub struct TextSystem {
     descriptor_set: Option<Arc<DescriptorSet>>,
     current_settings: TextRenderSettings,
     window_size: [f32; 2],
+    vertices: Vec<TextVertex>,
 }
 
 impl TextSystem {
@@ -396,6 +397,7 @@ impl TextSystem {
             descriptor_set: None,
             current_settings: settings,
             window_size: [800.0, 600.0],
+            vertices: Vec::new(),
         })
     }
 
@@ -894,5 +896,484 @@ impl TextSystem {
 
     pub fn get_window_size(&self) -> [f32; 2] {
         self.window_size
+    }
+
+    fn calculate_line_width(&self, line: &ColoredLine) -> f32 {
+        let scale = PxScale::from(self.current_settings.font_size);
+        let scaled_font = self.font.as_scaled(scale);
+
+        let mut width = 0.0;
+        for colored_char in &line.chars {
+            let ch = colored_char.ch;
+            if ch == '\r' {
+                continue;
+            }
+
+            let advance_width = if let Some(glyph_info) = self.glyph_infos.get(&ch) {
+                glyph_info.advance
+            } else {
+                let glyph_id = self.font.glyph_id(ch);
+                scaled_font.h_advance(glyph_id)
+            };
+
+            width += advance_width;
+        }
+
+        width
+    }
+
+    fn get_line_height(&self) -> f32 {
+        let scale = PxScale::from(self.current_settings.font_size);
+        let scaled_font = self.font.as_scaled(scale);
+        scaled_font.height()
+    }
+
+    fn get_current_cursor_y(&self) -> f32 {
+        self.current_settings.position[1]
+    }
+
+    fn add_char_vertices(&mut self, colored_char: &ColoredChar) {
+        let scale = PxScale::from(self.current_settings.font_size);
+        let scaled_font = self.font.as_scaled(scale);
+        let cursor_x = self.current_settings.position[0];
+        let cursor_y = self.current_settings.position[1];
+        let line_height = scaled_font.height();
+        let ch = colored_char.ch;
+        let char_color = colored_char.color;
+
+        if ch == '\r' {
+            return;
+        }
+
+        let advance_width = if let Some(glyph_info) = self.glyph_infos.get(&ch) {
+            glyph_info.advance
+        } else {
+            let glyph_id = self.font.glyph_id(ch);
+            scaled_font.h_advance(glyph_id)
+        };
+
+        if let Some(glyph_info) = self.glyph_infos.get(&ch) {
+            let pos_x = cursor_x + glyph_info.bearing[0];
+            let pos_y = cursor_y + glyph_info.bearing[1];
+
+            let glyph_vertices = [
+                TextVertex {
+                    position: [pos_x, pos_y],
+                    tex_coords: [glyph_info.uv_min[0], glyph_info.uv_min[1]],
+                    color: char_color,
+                },
+                TextVertex {
+                    position: [pos_x + glyph_info.size[0], pos_y],
+                    tex_coords: [glyph_info.uv_max[0], glyph_info.uv_min[1]],
+                    color: char_color,
+                },
+                TextVertex {
+                    position: [pos_x, pos_y + glyph_info.size[1]],
+                    tex_coords: [glyph_info.uv_min[0], glyph_info.uv_max[1]],
+                    color: char_color,
+                },
+                TextVertex {
+                    position: [pos_x + glyph_info.size[0], pos_y],
+                    tex_coords: [glyph_info.uv_max[0], glyph_info.uv_min[1]],
+                    color: char_color,
+                },
+                TextVertex {
+                    position: [pos_x + glyph_info.size[0], pos_y + glyph_info.size[1]],
+                    tex_coords: [glyph_info.uv_max[0], glyph_info.uv_max[1]],
+                    color: char_color,
+                },
+                TextVertex {
+                    position: [pos_x, pos_y + glyph_info.size[1]],
+                    tex_coords: [glyph_info.uv_min[0], glyph_info.uv_max[1]],
+                    color: char_color,
+                },
+            ];
+
+            self.vertices.extend_from_slice(&glyph_vertices);
+        }
+
+        if let Some(bg_color) = colored_char.background_color {
+            let bg_x = cursor_x;
+            let bg_y = cursor_y - scaled_font.ascent();
+            let bg_width = advance_width;
+            let bg_height = line_height;
+            let bg_uv = [0.0, 0.0];
+
+            let bg_vertices = [
+                TextVertex {
+                    position: [bg_x, bg_y],
+                    tex_coords: bg_uv,
+                    color: bg_color,
+                },
+                TextVertex {
+                    position: [bg_x + bg_width, bg_y],
+                    tex_coords: bg_uv,
+                    color: bg_color,
+                },
+                TextVertex {
+                    position: [bg_x, bg_y + bg_height],
+                    tex_coords: bg_uv,
+                    color: bg_color,
+                },
+                TextVertex {
+                    position: [bg_x + bg_width, bg_y],
+                    tex_coords: bg_uv,
+                    color: bg_color,
+                },
+                TextVertex {
+                    position: [bg_x + bg_width, bg_y + bg_height],
+                    tex_coords: bg_uv,
+                    color: bg_color,
+                },
+                TextVertex {
+                    position: [bg_x, bg_y + bg_height],
+                    tex_coords: bg_uv,
+                    color: bg_color,
+                },
+            ];
+
+            self.vertices.extend_from_slice(&bg_vertices);
+        }
+    }
+
+    pub fn flush_vertices(&mut self) -> Result<()> {
+        if self.vertices.is_empty() {
+            return Ok(());
+        }
+        let vertices = std::mem::take(&mut self.vertices);
+        self.update_vertex_buffer(vertices)?;
+        Ok(())
+    }
+
+    pub fn clear(&mut self) {
+        self.vertices.clear();
+        self.current_settings.position = [10.0, 30.0];
+    }
+}
+
+impl TextSurface for TextSystem {
+    fn write_line(&mut self, line: &ColoredLine) -> WriteResult {
+        let line_width = self.calculate_line_width(line);
+        let cursor_x = self.current_settings.position[0];
+        let cursor_y = self.get_current_cursor_y();
+        let line_height = self.get_line_height();
+
+        let scale = PxScale::from(self.current_settings.font_size);
+        let ascent = {
+            let scaled_font = self.font.as_scaled(scale);
+            scaled_font.ascent()
+        };
+        let total_line_height = cursor_y + line_height - ascent;
+
+        if cursor_x + line_width > self.window_size[0] || total_line_height > self.window_size[1] {
+            let mut writed = 0;
+            let mut test_width = 0.0;
+
+            for colored_char in &line.chars {
+                let ch = colored_char.ch;
+                if ch == '\r' {
+                    continue;
+                }
+
+                let advance_width = if let Some(glyph_info) = self.glyph_infos.get(&ch) {
+                    glyph_info.advance
+                } else {
+                    let glyph_id = self.font.glyph_id(ch);
+                    let scaled_font = self.font.as_scaled(scale);
+                    scaled_font.h_advance(glyph_id)
+                };
+
+                if cursor_x + test_width + advance_width > self.window_size[0]
+                    || total_line_height > self.window_size[1]
+                {
+                    break;
+                }
+
+                test_width += advance_width;
+                self.add_char_vertices(colored_char);
+                self.current_settings.position[0] += advance_width;
+                writed += 1;
+            }
+
+            return WriteResult::Overflow { writed };
+        }
+
+        for colored_char in &line.chars {
+            if colored_char.ch == '\r' {
+                continue;
+            }
+
+            let advance_width = if let Some(glyph_info) = self.glyph_infos.get(&colored_char.ch) {
+                glyph_info.advance
+            } else {
+                let glyph_id = self.font.glyph_id(colored_char.ch);
+                let scaled_font = self.font.as_scaled(scale);
+                scaled_font.h_advance(glyph_id)
+            };
+
+            self.add_char_vertices(colored_char);
+            self.current_settings.position[0] += advance_width;
+        }
+
+        self.current_settings.position[0] = 10.0;
+        self.current_settings.position[1] += line_height;
+        WriteResult::Written
+    }
+
+    fn write_line_wordwrap(&mut self, line: &ColoredLine) -> WriteResult {
+        let scale = PxScale::from(self.current_settings.font_size);
+        let line_height = self.get_line_height();
+        let cursor_y = self.get_current_cursor_y();
+        let ascent = {
+            let scaled_font = self.font.as_scaled(scale);
+            scaled_font.ascent()
+        };
+        let total_line_height = cursor_y + line_height - ascent;
+
+        if total_line_height > self.window_size[1] {
+            return WriteResult::Overflow { writed: 0 };
+        }
+
+        let mut cursor_x = self.current_settings.position[0];
+        let mut writed = 0;
+        let start_x = self.current_settings.position[0];
+
+        for colored_char in &line.chars {
+            let ch = colored_char.ch;
+            if ch == '\r' {
+                continue;
+            }
+
+            let advance_width = if let Some(glyph_info) = self.glyph_infos.get(&ch) {
+                glyph_info.advance
+            } else {
+                let glyph_id = self.font.glyph_id(ch);
+                let scaled_font = self.font.as_scaled(scale);
+                scaled_font.h_advance(glyph_id)
+            };
+
+            if cursor_x + advance_width > self.window_size[0] {
+                cursor_x = start_x;
+                self.current_settings.position[0] = start_x;
+                self.current_settings.position[1] += line_height;
+
+                let new_total_height = self.current_settings.position[1] + line_height - ascent;
+                if new_total_height > self.window_size[1] {
+                    return WriteResult::Overflow { writed };
+                }
+            }
+
+            cursor_x += advance_width;
+            self.add_char_vertices(colored_char);
+            self.current_settings.position[0] += advance_width;
+            writed += 1;
+        }
+
+        self.current_settings.position[1] += line_height;
+        WriteResult::Written
+    }
+
+    fn write_char(&mut self, ch: &ColoredChar) -> WriteResult {
+        if ch.ch == '\n' {
+            let line_height = self.get_line_height();
+            self.current_settings.position[0] = 10.0;
+            self.current_settings.position[1] += line_height;
+
+            let scale = PxScale::from(self.current_settings.font_size);
+            let ascent = {
+                let scaled_font = self.font.as_scaled(scale);
+                scaled_font.ascent()
+            };
+            let total_height = self.current_settings.position[1] + line_height - ascent;
+
+            if total_height > self.window_size[1] {
+                return WriteResult::Overflow { writed: 0 };
+            }
+
+            return WriteResult::Written;
+        }
+
+        if ch.ch == '\r' {
+            return WriteResult::Written;
+        }
+
+        let scale = PxScale::from(self.current_settings.font_size);
+
+        let advance_width = if let Some(glyph_info) = self.glyph_infos.get(&ch.ch) {
+            glyph_info.advance
+        } else {
+            let glyph_id = self.font.glyph_id(ch.ch);
+            let scaled_font = self.font.as_scaled(scale);
+            scaled_font.h_advance(glyph_id)
+        };
+
+        let cursor_x = self.current_settings.position[0];
+        let cursor_y = self.current_settings.position[1];
+        let line_height = self.get_line_height();
+        let ascent = {
+            let scaled_font = self.font.as_scaled(scale);
+            scaled_font.ascent()
+        };
+        let total_line_height = cursor_y + line_height - ascent;
+
+        if cursor_x + advance_width > self.window_size[0] || total_line_height > self.window_size[1]
+        {
+            return WriteResult::Overflow { writed: 0 };
+        }
+
+        self.add_char_vertices(ch);
+        self.current_settings.position[0] += advance_width;
+        WriteResult::Written
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_colored_line_basic() {
+        let mut line = ColoredLine::new();
+        assert_eq!(line.chars.len(), 0);
+
+        line.push('H', [1.0, 1.0, 1.0, 1.0]);
+        line.push('i', [1.0, 1.0, 1.0, 1.0]);
+        assert_eq!(line.chars.len(), 2);
+        assert_eq!(line.chars[0].ch, 'H');
+        assert_eq!(line.chars[1].ch, 'i');
+    }
+
+    #[test]
+    fn test_colored_line_with_background() {
+        let mut line = ColoredLine::new();
+        line.push_with_background('A', [1.0, 1.0, 1.0, 1.0], [0.0, 0.0, 1.0, 1.0]);
+
+        assert_eq!(line.chars.len(), 1);
+        assert_eq!(line.chars[0].ch, 'A');
+        assert!(line.chars[0].background_color.is_some());
+        assert_eq!(
+            line.chars[0].background_color.unwrap(),
+            [0.0, 0.0, 1.0, 1.0]
+        );
+    }
+
+    #[test]
+    fn test_colored_text_basic() {
+        let mut text = ColoredText::new();
+        assert_eq!(text.lines.len(), 1);
+
+        text.push('H', [1.0, 1.0, 1.0, 1.0]);
+        text.push('i', [1.0, 1.0, 1.0, 1.0]);
+
+        assert_eq!(text.lines.len(), 1);
+        assert_eq!(text.lines[0].chars.len(), 2);
+    }
+
+    #[test]
+    fn test_colored_text_newline() {
+        let mut text = ColoredText::new();
+        text.push('H', [1.0, 1.0, 1.0, 1.0]);
+        text.push('\n', [1.0, 1.0, 1.0, 1.0]);
+        text.push('i', [1.0, 1.0, 1.0, 1.0]);
+
+        assert_eq!(text.lines.len(), 2);
+        assert_eq!(text.lines[0].chars.len(), 1);
+        assert_eq!(text.lines[1].chars.len(), 1);
+    }
+
+    #[test]
+    fn test_colored_text_from_str() {
+        let text = ColoredText::from_str_with_color("Hello\nWorld", [1.0, 1.0, 1.0, 1.0]);
+
+        assert_eq!(text.lines.len(), 2);
+        assert_eq!(text.lines[0].chars.len(), 5);
+        assert_eq!(text.lines[1].chars.len(), 5);
+    }
+
+    #[test]
+    fn test_colored_text_total_char_count() {
+        let mut text = ColoredText::new();
+        text.push_str("Hello", [1.0, 1.0, 1.0, 1.0]);
+        text.push('\n', [1.0, 1.0, 1.0, 1.0]);
+        text.push_str("World", [1.0, 1.0, 1.0, 1.0]);
+
+        assert_eq!(text.total_char_count(), 10);
+    }
+
+    #[test]
+    fn test_colored_text_surface_write_char() {
+        let mut text = ColoredText::new();
+
+        let ch1 = ColoredChar {
+            ch: 'A',
+            color: [1.0, 1.0, 1.0, 1.0],
+            background_color: None,
+        };
+
+        let result = text.write_char(&ch1);
+        assert!(matches!(result, WriteResult::Written));
+        assert_eq!(text.lines[0].chars.len(), 1);
+    }
+
+    #[test]
+    fn test_colored_text_surface_write_char_newline() {
+        let mut text = ColoredText::new();
+
+        let ch = ColoredChar {
+            ch: '\n',
+            color: [1.0, 1.0, 1.0, 1.0],
+            background_color: None,
+        };
+
+        let result = text.write_char(&ch);
+        assert!(matches!(result, WriteResult::Written));
+        assert_eq!(text.lines.len(), 2);
+    }
+
+    #[test]
+    fn test_colored_text_surface_write_line() {
+        let mut text = ColoredText::new();
+
+        let mut line = ColoredLine::new();
+        line.push('H', [1.0, 1.0, 1.0, 1.0]);
+        line.push('i', [1.0, 1.0, 1.0, 1.0]);
+
+        let result = text.write_line(&line);
+        assert!(matches!(result, WriteResult::Written));
+        assert_eq!(text.lines.len(), 2);
+        assert_eq!(text.lines[0].chars.len(), 2);
+    }
+
+    #[test]
+    fn test_write_result_overflow() {
+        let result = WriteResult::Overflow { writed: 5 };
+        if let WriteResult::Overflow { writed } = result {
+            assert_eq!(writed, 5);
+        } else {
+            panic!("Expected Overflow variant");
+        }
+    }
+
+    #[test]
+    fn test_text_surface_writer() {
+        let mut text = ColoredText::new();
+        {
+            let mut writer = TextSurfaceWriter::new(&mut text);
+            writer.push_char('H', [1.0, 1.0, 1.0, 1.0]);
+            writer.push_char('i', [1.0, 1.0, 1.0, 1.0]);
+        }
+
+        assert_eq!(text.lines[0].chars.len(), 2);
+    }
+
+    #[test]
+    fn test_text_surface_writer_with_newline() {
+        let mut text = ColoredText::new();
+        {
+            let mut writer = TextSurfaceWriter::new(&mut text);
+            writer.push_str("Hello\nWorld", [1.0, 1.0, 1.0, 1.0]);
+        }
+
+        assert_eq!(text.lines.len(), 3);
     }
 }
