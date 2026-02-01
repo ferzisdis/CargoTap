@@ -1,6 +1,7 @@
 use anyhow::Result;
 use log::info;
 use std::collections::VecDeque;
+use std::ops::DerefMut;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use winit::event_loop::EventLoop;
@@ -216,13 +217,14 @@ impl CargoTapApp {
             .set_syntax_highlighting(self.config.text.syntax_highlighting);
 
         let ui_start = Instant::now();
-        let mut colored_text = crate::text::ColoredText::new();
-        crate::ui::create_colored_text(self, &mut colored_text);
-        self.ui_generation_time_ms = ui_start.elapsed().as_secs_f64() * 1000.0;
 
-        if let Some(ref text_system) = self.text_system {
-            if let Ok(mut text_system) = text_system.lock() {
-                if let Err(e) = text_system.update_text_with_settings(&colored_text) {
+        if let Some(text_system_arc) = self.text_system.clone() {
+            if let Ok(mut text_system) = text_system_arc.lock() {
+                text_system.clear();
+                crate::ui::create_colored_text(self, text_system.deref_mut());
+
+                self.ui_generation_time_ms = ui_start.elapsed().as_secs_f64() * 1000.0;
+                if let Err(e) = text_system.flush_vertices() {
                     log::error!("Failed to update main text: {}", e);
                 }
             }
