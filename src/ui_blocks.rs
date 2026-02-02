@@ -154,21 +154,7 @@ impl UiBlock for CodeDisplayBlock {
             cursor_position.saturating_sub(bytes_skipped)
         };
 
-        if app.config.text.show_line_numbers {
-            render_code_with_line_numbers(
-                app,
-                canvas,
-                &display_colored,
-                cursor_position_in_display,
-            );
-        } else {
-            render_code_without_line_numbers(
-                app,
-                canvas,
-                &display_colored,
-                cursor_position_in_display,
-            );
-        }
+        render_code_with_line_numbers(app, canvas, &display_colored, cursor_position_in_display);
     }
 }
 
@@ -207,11 +193,9 @@ fn render_code_with_line_numbers(
     let current_line = Some(app.code_state.get_cursor_line());
     let mut display_with_caret = display_colored.clone();
 
-    if cursor_position_in_display < display_with_caret.total_char_count() {
-        if let Some(char_ref) = display_with_caret.get_char_mut(cursor_position_in_display) {
-            char_ref.background_color = Some(caret_bg_color);
-        }
-    } else if cursor_position_in_display == display_with_caret.total_char_count() {
+    if let Some(char_ref) = display_with_caret.get_char_mut(cursor_position_in_display) {
+        char_ref.background_color = Some(caret_bg_color);
+    } else {
         display_with_caret.push_colored_char(crate::text::ColoredChar {
             ch: ' ',
             color: app.config.colors.text_default,
@@ -266,39 +250,6 @@ fn render_code_with_line_numbers(
             canvas.push_char('│', separator_color);
             canvas.push_char(' ', separator_color);
         }
-    }
-}
-
-fn render_code_without_line_numbers(
-    app: &mut CargoTapApp,
-    canvas: &mut dyn TextCanvas,
-    display_colored: &ColoredText,
-    cursor_position_in_display: usize,
-) {
-    let caret_bg_color = [0.0, 1.0, 0.0, 0.5];
-    let mut display_with_caret = display_colored.clone();
-
-    if cursor_position_in_display < display_with_caret.total_char_count() {
-        if let Some(char_ref) = display_with_caret.get_char_mut(cursor_position_in_display) {
-            char_ref.background_color = Some(caret_bg_color);
-        }
-    } else if cursor_position_in_display == display_with_caret.total_char_count() {
-        display_with_caret.push_colored_char(crate::text::ColoredChar {
-            ch: ' ',
-            color: app.config.colors.text_default,
-            background_color: Some(caret_bg_color),
-        });
-    }
-
-    for line in &display_with_caret.lines {
-        for colored_char in &line.chars {
-            if let Some(bg_color) = colored_char.background_color {
-                canvas.push_with_background(colored_char.ch, colored_char.color, bg_color);
-            } else {
-                canvas.push_char(colored_char.ch, colored_char.color);
-            }
-        }
-        canvas.newline();
     }
 }
 
