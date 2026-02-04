@@ -30,6 +30,8 @@ impl ApplicationHandler for CargoTapApp {
             self.save_progress();
         }
 
+        let is_resized = matches!(&event, WindowEvent::Resized(_));
+
         if let WindowEvent::ModifiersChanged(modifiers) = &event {
             info!("Modifiers changed: {:?}", modifiers.state());
             self.input_handler.update_modifiers(modifiers.state());
@@ -66,6 +68,10 @@ impl ApplicationHandler for CargoTapApp {
 
         self.render_engine
             .window_event(event_loop, _window_id, event);
+
+        if is_resized {
+            self.update_text();
+        }
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
