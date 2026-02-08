@@ -1,56 +1,61 @@
 use crate::app::CargoTapApp;
 use crate::examples::colored_text_demo::ColoredTextDemo;
-use crate::text::{ColoredText, TextCanvas};
+use crate::text::{ColoredChar, ColoredLine, ColoredText, TextSurface};
 
 pub trait UiBlock {
-    fn render(&self, app: &mut CargoTapApp, canvas: &mut dyn TextCanvas);
+    fn render(&self, app: &mut CargoTapApp, surface: &mut dyn TextSurface);
 }
 
 pub struct HeaderBlock;
 
 impl UiBlock for HeaderBlock {
-    fn render(&self, app: &mut CargoTapApp, canvas: &mut dyn TextCanvas) {
-        canvas.push_str("🦀 CargoTap ", [1.0, 0.5, 0.0, 1.0]);
-        canvas.push_str("Live Demo", app.config.colors.text_header);
-        canvas.newline();
+    fn render(&self, app: &mut CargoTapApp, surface: &mut dyn TextSurface) {
+        let mut line = ColoredLine::new();
+        line.push_str("🦀 CargoTap ", [1.0, 0.5, 0.0, 1.0]);
+        line.push_str("Live Demo", app.config.colors.text_header);
+        surface.write_line(&line);
     }
 }
 
 pub struct FileInfoBlock;
 
 impl UiBlock for FileInfoBlock {
-    fn render(&self, app: &mut CargoTapApp, canvas: &mut dyn TextCanvas) {
-        canvas.push_str(
+    fn render(&self, app: &mut CargoTapApp, surface: &mut dyn TextSurface) {
+        let mut line = ColoredLine::new();
+        line.push_str(
             &format!("📄 File: {} ", app.current_file_path),
             [0.5, 1.0, 1.0, 1.0],
         );
+        surface.write_line(&line);
     }
 }
 
 pub struct ProgressBlock;
 
 impl UiBlock for ProgressBlock {
-    fn render(&self, app: &mut CargoTapApp, canvas: &mut dyn TextCanvas) {
+    fn render(&self, app: &mut CargoTapApp, surface: &mut dyn TextSurface) {
         let progress_percent = app.code_state.get_progress() * 100.0;
         let cursor_pos = app.code_state.get_cursor_position();
         let total_len = app.code_state.get_total_length();
-        canvas.push_str(
+        let mut line = ColoredLine::new();
+        line.push_str(
             &format!(
                 "| Progress: {}/{} ({:.1}%)",
                 cursor_pos, total_len, progress_percent
             ),
             [0.0, 1.0, 0.5, 1.0],
         );
-        canvas.newline();
+        surface.write_line(&line);
     }
 }
 
 pub struct FpsBlock;
 
 impl UiBlock for FpsBlock {
-    fn render(&self, app: &mut CargoTapApp, canvas: &mut dyn TextCanvas) {
+    fn render(&self, app: &mut CargoTapApp, surface: &mut dyn TextSurface) {
+        let mut line = ColoredLine::new();
         if app.config.debug.show_profiling_info {
-            canvas.push_str(
+            line.push_str(
                 &format!(
                     "📊 FPS: {:.1} | Key: {:.3}ms | Text Update: {:.3}ms | UI Gen: {:.3}ms",
                     app.current_fps,
@@ -61,7 +66,7 @@ impl UiBlock for FpsBlock {
                 [0.8, 0.8, 0.8, 1.0],
             );
         } else {
-            canvas.push_str(
+            line.push_str(
                 &format!(
                     "📊 FPS: {:.1} | Key Processing: {:.3} ms",
                     app.current_fps, app.last_key_processing_time_ms
@@ -69,7 +74,7 @@ impl UiBlock for FpsBlock {
                 [0.8, 0.8, 0.8, 1.0],
             );
         }
-        canvas.newline();
+        surface.write_line(&line);
     }
 }
 
@@ -78,20 +83,22 @@ pub struct SeparatorBlock {
 }
 
 impl UiBlock for SeparatorBlock {
-    fn render(&self, _app: &mut CargoTapApp, canvas: &mut dyn TextCanvas) {
-        canvas.push_str(&"─".repeat(self.width), [0.5, 0.8, 1.0, 1.0]);
-        canvas.newline();
+    fn render(&self, _app: &mut CargoTapApp, surface: &mut dyn TextSurface) {
+        let mut line = ColoredLine::new();
+        line.push_str(&"─".repeat(self.width), [0.5, 0.8, 1.0, 1.0]);
+        surface.write_line(&line);
     }
 }
 
 pub struct SessionStateBlock;
 
 impl UiBlock for SessionStateBlock {
-    fn render(&self, app: &mut CargoTapApp, canvas: &mut dyn TextCanvas) {
+    fn render(&self, app: &mut CargoTapApp, surface: &mut dyn TextSurface) {
         if app.session_state.is_finished() {
             if let Some(stats) = app.session_state.last_stats() {
-                canvas.push_str("⏰ SESSION COMPLETE! ", [1.0, 1.0, 0.0, 1.0]);
-                canvas.newline();
+                let mut line = ColoredLine::new();
+                line.push_str("⏰ SESSION COMPLETE! ", [1.0, 1.0, 0.0, 1.0]);
+                surface.write_line(&line);
 
                 let summary = format!(
                     "Time: {:.1}s | Chars: {} | Speed: {:.0} CPM / {:.0} WPM | Accuracy: {:.1}%",
@@ -101,31 +108,42 @@ impl UiBlock for SessionStateBlock {
                     stats.words_per_minute,
                     stats.accuracy
                 );
-                canvas.push_str(&summary, [0.0, 1.0, 0.0, 1.0]);
-                canvas.newline();
-                canvas.push_str("Press SPACE to start new session", [0.0, 1.0, 1.0, 1.0]);
-                canvas.newline();
-                canvas.push_str(&"─".repeat(30), [0.5, 0.8, 1.0, 1.0]);
-                canvas.newline();
+                let mut line = ColoredLine::new();
+                line.push_str(&summary, [0.0, 1.0, 0.0, 1.0]);
+                surface.write_line(&line);
+
+                let mut line = ColoredLine::new();
+                line.push_str("Press SPACE to start new session", [0.0, 1.0, 1.0, 1.0]);
+                surface.write_line(&line);
+
+                let mut line = ColoredLine::new();
+                line.push_str(&"─".repeat(30), [0.5, 0.8, 1.0, 1.0]);
+                surface.write_line(&line);
             }
         } else if app.session_state.is_active() {
             let time_str = format!("⏱️  Time: {} ", app.session_state.format_time_remaining());
-            canvas.push_str(&time_str, [1.0, 1.0, 0.0, 1.0]);
+            let mut line = ColoredLine::new();
+            line.push_str(&time_str, [1.0, 1.0, 0.0, 1.0]);
 
             let current_pos = app.code_state.get_cursor_position();
             let stats = app.session_state.current_stats(current_pos);
             if stats.time_elapsed_secs > 0.0 {
                 let speed_str = format!("| {:.0} CPM ", stats.chars_per_minute);
-                canvas.push_str(&speed_str, [0.0, 1.0, 0.0, 1.0]);
+                line.push_str(&speed_str, [0.0, 1.0, 0.0, 1.0]);
             }
-            canvas.newline();
-            canvas.push_str(&"─".repeat(30), [0.5, 0.8, 1.0, 1.0]);
-            canvas.newline();
+            surface.write_line(&line);
+
+            let mut line = ColoredLine::new();
+            line.push_str(&"─".repeat(30), [0.5, 0.8, 1.0, 1.0]);
+            surface.write_line(&line);
         } else {
-            canvas.push_str("Start typing to begin session...", [0.7, 0.7, 0.7, 1.0]);
-            canvas.newline();
-            canvas.push_str(&"─".repeat(30), [0.5, 0.8, 1.0, 1.0]);
-            canvas.newline();
+            let mut line = ColoredLine::new();
+            line.push_str("Start typing to begin session...", [0.7, 0.7, 0.7, 1.0]);
+            surface.write_line(&line);
+
+            let mut line = ColoredLine::new();
+            line.push_str(&"─".repeat(30), [0.5, 0.8, 1.0, 1.0]);
+            surface.write_line(&line);
         }
     }
 }
@@ -133,7 +151,7 @@ impl UiBlock for SessionStateBlock {
 pub struct CodeDisplayBlock;
 
 impl UiBlock for CodeDisplayBlock {
-    fn render(&self, app: &mut CargoTapApp, canvas: &mut dyn TextCanvas) {
+    fn render(&self, app: &mut CargoTapApp, surface: &mut dyn TextSurface) {
         let cursor_position = app.code_state.get_cursor_position();
         let full_code_colored = app.code_state.get_full_code_colored();
         let display_colored = apply_scroll_offset_colored(&full_code_colored, app.scroll_offset);
@@ -154,7 +172,7 @@ impl UiBlock for CodeDisplayBlock {
             cursor_position.saturating_sub(bytes_skipped)
         };
 
-        render_code_with_line_numbers(app, canvas, &display_colored, cursor_position_in_display);
+        render_code_with_line_numbers(app, surface, &display_colored, cursor_position_in_display);
     }
 }
 
@@ -181,7 +199,7 @@ fn apply_scroll_offset_colored(colored_text: &ColoredText, scroll_offset: usize)
 
 fn render_code_with_line_numbers(
     app: &mut CargoTapApp,
-    canvas: &mut dyn TextCanvas,
+    surface: &mut dyn TextSurface,
     display_colored: &ColoredText,
     cursor_position_in_display: usize,
 ) {
@@ -208,47 +226,40 @@ fn render_code_with_line_numbers(
     let num_digits = (line_count + app.scroll_offset).to_string().len().max(3);
     let mut current_line_num = start_line;
 
-    let line_num_str = format!("{:>width$}", current_line_num, width = num_digits);
-    let is_current = current_line.map_or(false, |cl| cl == current_line_num);
-    let num_color = if is_current {
-        current_line_color
-    } else {
-        line_number_color
-    };
+    for (line_idx, code_line) in display_with_caret.lines.iter().enumerate() {
+        let mut line = ColoredLine::new();
 
-    for ch in line_num_str.chars() {
-        canvas.push_char(ch, num_color);
-    }
-    canvas.push_char(' ', separator_color);
-    canvas.push_char('│', separator_color);
-    canvas.push_char(' ', separator_color);
+        let line_num_str = format!("{:>width$}", current_line_num, width = num_digits);
+        let is_current = current_line.map_or(false, |cl| cl == current_line_num);
+        let num_color = if is_current {
+            current_line_color
+        } else {
+            line_number_color
+        };
 
-    for (line_idx, line) in display_with_caret.lines.iter().enumerate() {
-        for colored_char in &line.chars {
+        for ch in line_num_str.chars() {
+            line.push(ch, num_color);
+        }
+        line.push(' ', separator_color);
+        line.push('│', separator_color);
+        line.push(' ', separator_color);
+
+        for colored_char in &code_line.chars {
             if let Some(bg_color) = colored_char.background_color {
-                canvas.push_with_background(colored_char.ch, colored_char.color, bg_color);
+                line.chars.push(ColoredChar {
+                    ch: colored_char.ch,
+                    color: colored_char.color,
+                    background_color: Some(bg_color),
+                });
             } else {
-                canvas.push_char(colored_char.ch, colored_char.color);
+                line.push(colored_char.ch, colored_char.color);
             }
         }
 
-        if line_idx + 1 < display_with_caret.lines.len() {
-            canvas.newline();
-            current_line_num += 1;
-            let line_num_str = format!("{:>width$}", current_line_num, width = num_digits);
-            let is_current = current_line.map_or(false, |cl| cl == current_line_num);
-            let num_color = if is_current {
-                current_line_color
-            } else {
-                line_number_color
-            };
+        surface.write_line(&line);
 
-            for ch in line_num_str.chars() {
-                canvas.push_char(ch, num_color);
-            }
-            canvas.push_char(' ', separator_color);
-            canvas.push_char('│', separator_color);
-            canvas.push_char(' ', separator_color);
+        if line_idx + 1 < display_with_caret.lines.len() {
+            current_line_num += 1;
         }
     }
 }
@@ -256,27 +267,33 @@ fn render_code_with_line_numbers(
 pub struct RainbowEffectsBlock;
 
 impl UiBlock for RainbowEffectsBlock {
-    fn render(&self, app: &mut CargoTapApp, canvas: &mut dyn TextCanvas) {
-        canvas.newline();
-        canvas.push_str("✨ Rainbow: ", app.config.colors.text_default);
+    fn render(&self, app: &mut CargoTapApp, surface: &mut dyn TextSurface) {
+        surface.write_line(&ColoredLine::new());
+
+        let mut line = ColoredLine::new();
+        line.push_str("✨ Rainbow: ", app.config.colors.text_default);
         let rainbow = ColoredTextDemo::create_rainbow_text("Per-character colors work!");
 
-        for line in rainbow.lines {
-            for colored_char in line.chars {
-                canvas.push_char(colored_char.ch, colored_char.color);
+        for rainbow_line in rainbow.lines {
+            for colored_char in rainbow_line.chars {
+                line.push(colored_char.ch, colored_char.color);
             }
         }
+        surface.write_line(&line);
     }
 }
 
 pub struct FooterBlock;
 
 impl UiBlock for FooterBlock {
-    fn render(&self, _app: &mut CargoTapApp, canvas: &mut dyn TextCanvas) {
-        canvas.newline();
-        canvas.push_str(
+    fn render(&self, _app: &mut CargoTapApp, surface: &mut dyn TextSurface) {
+        surface.write_line(&ColoredLine::new());
+
+        let mut line = ColoredLine::new();
+        line.push_str(
             "Press Cmd+P to change file | Press Ctrl+T / Cmd+T to view statistics",
             [0.5, 0.5, 0.5, 1.0],
         );
+        surface.write_line(&line);
     }
 }

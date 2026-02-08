@@ -1,5 +1,5 @@
 use crate::app::CargoTapApp;
-use crate::text::{TextSurface, TextSurfaceWriter};
+use crate::text::{ColoredLine, TextSurface};
 use crate::ui_blocks::{
     CodeDisplayBlock, FileInfoBlock, FooterBlock, FpsBlock, HeaderBlock, ProgressBlock,
     RainbowEffectsBlock, SeparatorBlock, SessionStateBlock, UiBlock,
@@ -7,51 +7,61 @@ use crate::ui_blocks::{
 use std::fs;
 use std::path::Path;
 
-pub fn create_colored_text(app: &mut CargoTapApp, surface: &mut dyn TextSurface) {
-    let mut writer = TextSurfaceWriter::new(surface);
+fn write_text(surface: &mut dyn TextSurface, text: &str, color: [f32; 4]) {
+    for line_text in text.split('\n') {
+        let mut line = ColoredLine::new();
+        line.push_str(line_text, color);
+        surface.write_line(&line);
+    }
+}
 
+pub fn create_colored_text(app: &mut CargoTapApp, surface: &mut dyn TextSurface) {
     if app.file_selection_mode {
-        create_file_selection_screen(app, &mut writer);
+        create_file_selection_screen(app, surface);
         return;
     }
 
     if app.show_statistics {
-        create_statistics_screen(app, &mut writer);
+        create_statistics_screen(app, surface);
         return;
     }
 
-    HeaderBlock.render(app, &mut writer);
-    FileInfoBlock.render(app, &mut writer);
-    ProgressBlock.render(app, &mut writer);
-    FpsBlock.render(app, &mut writer);
-    SeparatorBlock { width: 50 }.render(app, &mut writer);
-    SessionStateBlock.render(app, &mut writer);
-    CodeDisplayBlock.render(app, &mut writer);
+    HeaderBlock.render(app, surface);
+    FileInfoBlock.render(app, surface);
+    ProgressBlock.render(app, surface);
+    FpsBlock.render(app, surface);
+    SeparatorBlock { width: 50 }.render(app, surface);
+    SessionStateBlock.render(app, surface);
+    CodeDisplayBlock.render(app, surface);
 
     if app.config.text.rainbow_effects {
-        RainbowEffectsBlock.render(app, &mut writer);
+        RainbowEffectsBlock.render(app, surface);
     }
 
-    FooterBlock.render(app, &mut writer);
+    FooterBlock.render(app, surface);
 }
 
-fn create_statistics_screen(app: &mut CargoTapApp, writer: &mut TextSurfaceWriter) {
-    writer.push_str(
+fn create_statistics_screen(app: &mut CargoTapApp, surface: &mut dyn TextSurface) {
+    write_text(
+        surface,
         "╔═══════════════════════════════════════════════╗\n",
         [0.0, 1.0, 1.0, 1.0],
     );
-    writer.push_str(
+    write_text(
+        surface,
         "║          SESSION STATISTICS REPORT            ║\n",
         [0.0, 1.0, 1.0, 1.0],
     );
-    writer.push_str(
+    write_text(
+        surface,
         "╚═══════════════════════════════════════════════╝\n\n",
         [0.0, 1.0, 1.0, 1.0],
     );
 
     if app.session_history.count() == 0 {
-        writer.push_str("No sessions recorded yet.\n", [0.7, 0.7, 0.7, 1.0]);
-        writer.push_str(
+        write_text(surface, "No sessions recorded yet.\n", [0.7, 0.7, 0.7, 1.0]);
+        write_text(
+            surface,
             "Start typing to track your progress!\n\n",
             [0.7, 0.7, 0.7, 1.0],
         );
@@ -60,95 +70,112 @@ fn create_statistics_screen(app: &mut CargoTapApp, writer: &mut TextSurfaceWrite
         let recent_summary = app.session_history.get_recent_summary(5);
         let (improved, improvement) = app.session_history.analyze_improvement(5);
 
-        writer.push_str(
+        write_text(
+            surface,
             &format!("📊 ALL-TIME STATS ({} sessions)\n", summary.total_sessions),
             [1.0, 1.0, 0.0, 1.0],
         );
-        writer.push_str(
+        write_text(
+            surface,
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
             [0.5, 0.8, 1.0, 1.0],
         );
-        writer.push_str(
+        write_text(
+            surface,
             &format!("  Total Characters: {}\n", summary.total_chars),
             app.config.colors.text_default,
         );
-        writer.push_str(
+        write_text(
+            surface,
             &format!("  Total Time: {:.1} minutes\n", summary.total_time / 60.0),
             app.config.colors.text_default,
         );
-        writer.push_str(
+        write_text(
+            surface,
             &format!(
                 "  Avg Speed: {:.0} CPM / {:.0} WPM\n",
                 summary.avg_cpm, summary.avg_wpm
             ),
             [0.0, 1.0, 0.0, 1.0],
         );
-        writer.push_str(
+        write_text(
+            surface,
             &format!("  Avg Accuracy: {:.1}%\n", summary.avg_accuracy),
             [0.0, 1.0, 0.0, 1.0],
         );
-        writer.push_str(
+        write_text(
+            surface,
             &format!("  Total Errors: {}\n\n", summary.total_errors),
             app.config.colors.text_default,
         );
 
-        writer.push_str("🏆 BEST PERFORMANCES\n", [1.0, 0.84, 0.0, 1.0]);
-        writer.push_str(
+        write_text(surface, "🏆 BEST PERFORMANCES\n", [1.0, 0.84, 0.0, 1.0]);
+        write_text(
+            surface,
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
             [0.5, 0.8, 1.0, 1.0],
         );
-        writer.push_str(
+        write_text(
+            surface,
             &format!(
                 "  Best Speed: {:.0} CPM / {:.0} WPM\n",
                 summary.best_cpm, summary.best_wpm
             ),
             [1.0, 0.5, 0.0, 1.0],
         );
-        writer.push_str(
+        write_text(
+            surface,
             &format!("  Best Accuracy: {:.1}%\n\n", summary.best_accuracy),
             [1.0, 0.5, 0.0, 1.0],
         );
 
         if recent_summary.total_sessions > 0 {
-            writer.push_str(
+            write_text(
+                surface,
                 &format!(
                     "📈 RECENT PERFORMANCE (last {} sessions)\n",
                     recent_summary.total_sessions
                 ),
                 [0.5, 1.0, 0.5, 1.0],
             );
-            writer.push_str(
+            write_text(
+                surface,
                 "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
                 [0.5, 0.8, 1.0, 1.0],
             );
-            writer.push_str(
+            write_text(
+                surface,
                 &format!(
                     "  Avg Speed: {:.0} CPM / {:.0} WPM\n",
                     recent_summary.avg_cpm, recent_summary.avg_wpm
                 ),
                 [0.0, 1.0, 0.0, 1.0],
             );
-            writer.push_str(
+            write_text(
+                surface,
                 &format!("  Avg Accuracy: {:.1}%\n", recent_summary.avg_accuracy),
                 [0.0, 1.0, 0.0, 1.0],
             );
 
             if improved {
-                writer.push_str(
+                write_text(
+                    surface,
                     &format!("  📊 Improvement: +{:.1}% 🎉\n", improvement),
                     [0.0, 1.0, 0.5, 1.0],
                 );
             } else if improvement < 0.0 {
-                writer.push_str(
+                write_text(
+                    surface,
                     &format!("  📊 Change: {:.1}%\n", improvement),
                     [1.0, 0.5, 0.0, 1.0],
                 );
             }
-            writer.push_str("\n", app.config.colors.text_default);
+            write_text(surface, "\n", app.config.colors.text_default);
         }
 
-        writer.push_str("📝 RECENT SESSIONS\n", [0.7, 0.7, 1.0, 1.0]);
-        writer.push_str(
+        write_text(surface, "📝 RECENT SESSIONS\n", [0.7, 0.7, 1.0, 1.0]);
+        write_text(
+            surface,
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
             [0.5, 0.8, 1.0, 1.0],
         );
@@ -158,7 +185,8 @@ fn create_statistics_screen(app: &mut CargoTapApp, writer: &mut TextSurfaceWrite
             .iter()
             .enumerate()
         {
-            writer.push_str(
+            write_text(
+                surface,
                 &format!(
                     "  {}. {:.0} CPM / {:.0} WPM | {:.1}% acc | {} chars\n",
                     i + 1,
@@ -172,38 +200,50 @@ fn create_statistics_screen(app: &mut CargoTapApp, writer: &mut TextSurfaceWrite
         }
     }
 
-    writer.push_str(
+    write_text(
+        surface,
         "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
         [0.5, 0.8, 1.0, 1.0],
     );
-    writer.push_str(
+    write_text(
+        surface,
         "Press ESC to return | Press Ctrl+T / Cmd+T to view stats\n",
         [0.7, 0.7, 0.7, 1.0],
     );
 }
 
-fn create_file_selection_screen(app: &mut CargoTapApp, writer: &mut TextSurfaceWriter) {
-    writer.push_str(
+fn create_file_selection_screen(app: &mut CargoTapApp, surface: &mut dyn TextSurface) {
+    write_text(
+        surface,
         "╔═══════════════════════════════════════════════╗\n",
         [0.0, 1.0, 1.0, 1.0],
     );
-    writer.push_str(
+    write_text(
+        surface,
         "║              FILE SELECTION MODE              ║\n",
         [0.0, 1.0, 1.0, 1.0],
     );
-    writer.push_str(
+    write_text(
+        surface,
         "╚═══════════════════════════════════════════════╝\n\n",
         [0.0, 1.0, 1.0, 1.0],
     );
 
-    writer.push_str("Enter file path to load:\n\n", [1.0, 1.0, 1.0, 1.0]);
+    write_text(
+        surface,
+        "Enter file path to load:\n\n",
+        [1.0, 1.0, 1.0, 1.0],
+    );
 
-    writer.push_str("📝 ", [1.0, 0.84, 0.0, 1.0]);
-    writer.push_str(&app.file_input_buffer, [0.0, 1.0, 0.0, 1.0]);
-    writer.push_str("█", [0.0, 1.0, 0.0, 1.0]);
+    let mut line = ColoredLine::new();
+    line.push_str("📝 ", [1.0, 0.84, 0.0, 1.0]);
+    line.push_str(&app.file_input_buffer, [0.0, 1.0, 0.0, 1.0]);
+    line.push_str("█", [0.0, 1.0, 0.0, 1.0]);
+    surface.write_line(&line);
 
-    writer.push_str("\n\n", app.config.colors.text_default);
-    writer.push_str(
+    write_text(surface, "\n\n", app.config.colors.text_default);
+    write_text(
+        surface,
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
         [0.5, 0.8, 1.0, 1.0],
     );
@@ -211,11 +251,13 @@ fn create_file_selection_screen(app: &mut CargoTapApp, writer: &mut TextSurfaceW
     let dir_path = get_directory_from_path(&app.file_input_buffer);
 
     if let Ok(entries) = fs::read_dir(&dir_path) {
-        writer.push_str(
+        write_text(
+            surface,
             &format!("Contents of directory: {}\n", dir_path),
             [0.7, 0.7, 0.7, 1.0],
         );
-        writer.push_str(
+        write_text(
+            surface,
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
             [0.5, 0.8, 1.0, 1.0],
         );
@@ -238,18 +280,20 @@ fn create_file_selection_screen(app: &mut CargoTapApp, writer: &mut TextSurfaceW
             let file_name = entry.file_name();
             let file_name_str = file_name.to_string_lossy();
 
-            writer.push_str("  📁 ", [0.5, 0.7, 1.0, 1.0]);
-            writer.push_str(&file_name_str, [0.5, 0.7, 1.0, 1.0]);
-            writer.push_str("/", [0.5, 0.7, 1.0, 1.0]);
+            let mut line = ColoredLine::new();
+            line.push_str("  📁 ", [0.5, 0.7, 1.0, 1.0]);
+            line.push_str(&file_name_str, [0.5, 0.7, 1.0, 1.0]);
+            line.push_str("/", [0.5, 0.7, 1.0, 1.0]);
 
             let padding = 40_usize.saturating_sub(file_name_str.len() + 1);
-            writer.push_str(&" ".repeat(padding), [0.7, 0.7, 0.7, 1.0]);
-            writer.push_str("<DIR>", [0.5, 0.7, 1.0, 1.0]);
-            writer.push_str("\n", [0.7, 0.7, 0.7, 1.0]);
+            line.push_str(&" ".repeat(padding), [0.7, 0.7, 0.7, 1.0]);
+            line.push_str("<DIR>", [0.5, 0.7, 1.0, 1.0]);
+            surface.write_line(&line);
         }
 
         if dirs.len() > 10 {
-            writer.push_str(
+            write_text(
+                surface,
                 &format!("  ... and {} more directories\n", dirs.len() - 10),
                 [0.6, 0.6, 0.6, 1.0],
             );
@@ -267,51 +311,64 @@ fn create_file_selection_screen(app: &mut CargoTapApp, writer: &mut TextSurfaceW
             let full_path = path.to_string_lossy().to_string();
             let has_progress = app.progress_storage.get_progress(&full_path).is_some();
 
+            let mut line = ColoredLine::new();
             if has_progress {
-                writer.push_str("  ★ ", [1.0, 0.84, 0.0, 1.0]);
-                writer.push_str(&file_name_str, [1.0, 1.0, 0.0, 1.0]);
+                line.push_str("  ★ ", [1.0, 0.84, 0.0, 1.0]);
+                line.push_str(&file_name_str, [1.0, 1.0, 0.0, 1.0]);
             } else {
-                writer.push_str("    ", [0.7, 0.7, 0.7, 1.0]);
-                writer.push_str(&file_name_str, [0.9, 0.9, 0.9, 1.0]);
+                line.push_str("    ", [0.7, 0.7, 0.7, 1.0]);
+                line.push_str(&file_name_str, [0.9, 0.9, 0.9, 1.0]);
             }
 
             let padding = 40_usize.saturating_sub(file_name_str.len());
-            writer.push_str(&" ".repeat(padding), [0.7, 0.7, 0.7, 1.0]);
-            writer.push_str(&size_str, [0.5, 0.8, 1.0, 1.0]);
-            writer.push_str("\n", [0.7, 0.7, 0.7, 1.0]);
+            line.push_str(&" ".repeat(padding), [0.7, 0.7, 0.7, 1.0]);
+            line.push_str(&size_str, [0.5, 0.8, 1.0, 1.0]);
+            surface.write_line(&line);
         }
 
         if files.len() > 20 {
-            writer.push_str(
+            write_text(
+                surface,
                 &format!("  ... and {} more files\n", files.len() - 20),
                 [0.6, 0.6, 0.6, 1.0],
             );
         }
 
-        writer.push_str("\n", app.config.colors.text_default);
+        write_text(surface, "\n", app.config.colors.text_default);
     }
 
-    writer.push_str(
+    write_text(
+        surface,
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
         [0.5, 0.8, 1.0, 1.0],
     );
 
-    writer.push_str("Current file: ", [0.7, 0.7, 0.7, 1.0]);
-    writer.push_str(&app.current_file_path, [0.5, 1.0, 1.0, 1.0]);
-    writer.push_str("\n\n", app.config.colors.text_default);
+    let mut line = ColoredLine::new();
+    line.push_str("Current file: ", [0.7, 0.7, 0.7, 1.0]);
+    line.push_str(&app.current_file_path, [0.5, 1.0, 1.0, 1.0]);
+    surface.write_line(&line);
 
-    writer.push_str("Instructions:\n", [1.0, 1.0, 0.0, 1.0]);
-    writer.push_str(
+    write_text(surface, "\n\n", app.config.colors.text_default);
+
+    write_text(surface, "Instructions:\n", [1.0, 1.0, 0.0, 1.0]);
+    write_text(
+        surface,
         "  • Edit the file path below (pre-filled with current path)\n",
         [0.7, 0.7, 0.7, 1.0],
     );
-    writer.push_str("  • Press ENTER to load the file\n", [0.7, 0.7, 0.7, 1.0]);
-    writer.push_str("  • Press ESC to cancel\n", [0.7, 0.7, 0.7, 1.0]);
-    writer.push_str(
+    write_text(
+        surface,
+        "  • Press ENTER to load the file\n",
+        [0.7, 0.7, 0.7, 1.0],
+    );
+    write_text(surface, "  • Press ESC to cancel\n", [0.7, 0.7, 0.7, 1.0]);
+    write_text(
+        surface,
         "  • Use BACKSPACE to delete characters\n",
         [0.7, 0.7, 0.7, 1.0],
     );
-    writer.push_str(
+    write_text(
+        surface,
         "  • Files with ★ have saved progress\n\n",
         [0.7, 0.7, 0.7, 1.0],
     );
