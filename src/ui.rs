@@ -12,6 +12,7 @@ fn write_text(surface: &mut dyn TextSurface, text: &str, color: [f32; 4]) {
         let mut line = ColoredLine::new();
         line.push_str(line_text, color);
         surface.write_line(&line);
+        surface.write_break();
     }
 }
 
@@ -240,6 +241,7 @@ fn create_file_selection_screen(app: &mut CargoTapApp, surface: &mut dyn TextSur
     line.push_str(&app.file_input_buffer, [0.0, 1.0, 0.0, 1.0]);
     line.push_str("█", [0.0, 1.0, 0.0, 1.0]);
     surface.write_line(&line);
+    surface.write_break();
 
     write_text(surface, "\n\n", app.config.colors.text_default);
     write_text(
@@ -289,6 +291,7 @@ fn create_file_selection_screen(app: &mut CargoTapApp, surface: &mut dyn TextSur
             line.push_str(&" ".repeat(padding), [0.7, 0.7, 0.7, 1.0]);
             line.push_str("<DIR>", [0.5, 0.7, 1.0, 1.0]);
             surface.write_line(&line);
+            surface.write_break();
         }
 
         if dirs.len() > 10 {
@@ -347,6 +350,7 @@ fn create_file_selection_screen(app: &mut CargoTapApp, surface: &mut dyn TextSur
     line.push_str("Current file: ", [0.7, 0.7, 0.7, 1.0]);
     line.push_str(&app.current_file_path, [0.5, 1.0, 1.0, 1.0]);
     surface.write_line(&line);
+    surface.write_break();
 
     write_text(surface, "\n\n", app.config.colors.text_default);
 

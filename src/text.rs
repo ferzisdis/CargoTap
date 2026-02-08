@@ -78,13 +78,6 @@ impl ColoredLine {
     }
 }
 
-pub trait TextCanvas {
-    fn push_char(&mut self, ch: char, color: [f32; 4]);
-    fn push_str(&mut self, text: &str, color: [f32; 4]);
-    fn push_with_background(&mut self, ch: char, color: [f32; 4], bg_color: [f32; 4]);
-    fn newline(&mut self);
-}
-
 pub enum WriteResult {
     Written,
     Overflow { writed: usize },
@@ -94,77 +87,7 @@ pub trait TextSurface {
     fn write_line(&mut self, line: &ColoredLine) -> WriteResult;
     fn write_line_wordwrap(&mut self, line: &ColoredLine) -> WriteResult;
     fn write_char(&mut self, ch: &ColoredChar) -> WriteResult;
-}
-
-pub struct TextSurfaceWriter<'a> {
-    surface: &'a mut dyn TextSurface,
-    current_line: ColoredLine,
-}
-
-impl<'a> TextSurfaceWriter<'a> {
-    pub fn new(surface: &'a mut dyn TextSurface) -> Self {
-        Self {
-            surface,
-            current_line: ColoredLine::new(),
-        }
-    }
-
-    pub fn push_char(&mut self, ch: char, color: [f32; 4]) {
-        if ch == '\n' {
-            self.flush_line();
-        } else {
-            self.current_line.push(ch, color);
-        }
-    }
-
-    pub fn push_str(&mut self, text: &str, color: [f32; 4]) {
-        for ch in text.chars() {
-            self.push_char(ch, color);
-        }
-    }
-
-    pub fn push_with_background(&mut self, ch: char, color: [f32; 4], bg_color: [f32; 4]) {
-        if ch == '\n' {
-            self.flush_line();
-        } else {
-            self.current_line.push_with_background(ch, color, bg_color);
-        }
-    }
-
-    pub fn newline(&mut self) {
-        self.flush_line();
-    }
-
-    fn flush_line(&mut self) {
-        let line = std::mem::replace(&mut self.current_line, ColoredLine::new());
-        self.surface.write_line(&line);
-    }
-}
-
-impl<'a> Drop for TextSurfaceWriter<'a> {
-    fn drop(&mut self) {
-        if !self.current_line.chars.is_empty() {
-            self.flush_line();
-        }
-    }
-}
-
-impl<'a> TextCanvas for TextSurfaceWriter<'a> {
-    fn push_char(&mut self, ch: char, color: [f32; 4]) {
-        TextSurfaceWriter::push_char(self, ch, color);
-    }
-
-    fn push_str(&mut self, text: &str, color: [f32; 4]) {
-        TextSurfaceWriter::push_str(self, text, color);
-    }
-
-    fn push_with_background(&mut self, ch: char, color: [f32; 4], bg_color: [f32; 4]) {
-        TextSurfaceWriter::push_with_background(self, ch, color, bg_color);
-    }
-
-    fn newline(&mut self) {
-        TextSurfaceWriter::newline(self);
-    }
+    fn write_break(&mut self) -> WriteResult;
 }
 
 #[derive(Debug, Clone)]
@@ -268,49 +191,6 @@ impl ColoredText {
                 last_line.chars.push(colored_char);
             }
         }
-    }
-}
-
-impl TextCanvas for ColoredText {
-    fn push_char(&mut self, ch: char, color: [f32; 4]) {
-        self.push(ch, color);
-    }
-
-    fn push_str(&mut self, text: &str, color: [f32; 4]) {
-        ColoredText::push_str(self, text, color);
-    }
-
-    fn push_with_background(&mut self, ch: char, color: [f32; 4], bg_color: [f32; 4]) {
-        ColoredText::push_with_background(self, ch, color, bg_color);
-    }
-
-    fn newline(&mut self) {
-        self.push('\n', [1.0, 1.0, 1.0, 1.0]);
-    }
-}
-
-impl TextSurface for ColoredText {
-    fn write_line(&mut self, line: &ColoredLine) -> WriteResult {
-        if let Some(last_line) = self.lines.last_mut() {
-            last_line.chars.extend(line.chars.iter().cloned());
-        }
-        self.lines.push(ColoredLine::new());
-        WriteResult::Written
-    }
-
-    fn write_line_wordwrap(&mut self, line: &ColoredLine) -> WriteResult {
-        self.write_line(line)
-    }
-
-    fn write_char(&mut self, ch: &ColoredChar) -> WriteResult {
-        if ch.ch == '\n' {
-            self.lines.push(ColoredLine::new());
-        } else {
-            if let Some(last_line) = self.lines.last_mut() {
-                last_line.chars.push(ch.clone());
-            }
-        }
-        WriteResult::Written
     }
 }
 
@@ -1058,144 +938,47 @@ impl TextSystem {
 
 impl TextSurface for TextSystem {
     fn write_line(&mut self, line: &ColoredLine) -> WriteResult {
-        let line_width = self.calculate_line_width(line);
-        let cursor_x = self.current_settings.position[0];
-        let cursor_y = self.get_current_cursor_y();
-        let line_height = self.get_line_height();
-
-        let scale = PxScale::from(self.current_settings.font_size);
-        let ascent = {
-            let scaled_font = self.font.as_scaled(scale);
-            scaled_font.ascent()
-        };
-        let total_line_height = cursor_y + line_height - ascent;
-
-        if cursor_x + line_width > self.window_size[0] || total_line_height > self.window_size[1] {
-            let mut writed = 0;
-            let mut test_width = 0.0;
-
-            for colored_char in &line.chars {
-                let ch = colored_char.ch;
-                if ch == '\r' {
-                    continue;
+        let mut total_writed = 0usize;
+        for ch in line.chars.iter() {
+            match self.write_char(&ch) {
+                WriteResult::Written => {
+                    total_writed += 1;
                 }
-
-                let advance_width = if let Some(glyph_info) = self.glyph_infos.get(&ch) {
-                    glyph_info.advance
-                } else {
-                    let glyph_id = self.font.glyph_id(ch);
-                    let scaled_font = self.font.as_scaled(scale);
-                    scaled_font.h_advance(glyph_id)
-                };
-
-                if cursor_x + test_width + advance_width > self.window_size[0]
-                    || total_line_height > self.window_size[1]
-                {
-                    break;
+                WriteResult::Overflow { writed } => {
+                    return WriteResult::Overflow {
+                        writed: total_writed + writed,
+                    };
                 }
-
-                test_width += advance_width;
-                self.add_char_vertices(colored_char);
-                self.current_settings.position[0] += advance_width;
-                writed += 1;
-            }
-
-            return WriteResult::Overflow { writed };
-        }
-
-        for colored_char in &line.chars {
-            if colored_char.ch == '\r' {
-                continue;
-            }
-
-            let advance_width = if let Some(glyph_info) = self.glyph_infos.get(&colored_char.ch) {
-                glyph_info.advance
-            } else {
-                let glyph_id = self.font.glyph_id(colored_char.ch);
-                let scaled_font = self.font.as_scaled(scale);
-                scaled_font.h_advance(glyph_id)
             };
-
-            self.add_char_vertices(colored_char);
-            self.current_settings.position[0] += advance_width;
         }
 
-        self.current_settings.position[0] = 10.0;
-        self.current_settings.position[1] += line_height;
-        WriteResult::Written
+        return WriteResult::Written;
     }
 
     fn write_line_wordwrap(&mut self, line: &ColoredLine) -> WriteResult {
-        let scale = PxScale::from(self.current_settings.font_size);
-        let line_height = self.get_line_height();
-        let cursor_y = self.get_current_cursor_y();
-        let ascent = {
-            let scaled_font = self.font.as_scaled(scale);
-            scaled_font.ascent()
+        let mut total_writed = 0usize;
+        let mut line = ColoredLine {
+            chars: line.chars.clone(),
         };
-        let total_line_height = cursor_y + line_height - ascent;
-
-        if total_line_height > self.window_size[1] {
-            return WriteResult::Overflow { writed: 0 };
-        }
-
-        let mut cursor_x = self.current_settings.position[0];
-        let mut writed = 0;
-        let start_x = self.current_settings.position[0];
-
-        for colored_char in &line.chars {
-            let ch = colored_char.ch;
-            if ch == '\r' {
-                continue;
-            }
-
-            let advance_width = if let Some(glyph_info) = self.glyph_infos.get(&ch) {
-                glyph_info.advance
-            } else {
-                let glyph_id = self.font.glyph_id(ch);
-                let scaled_font = self.font.as_scaled(scale);
-                scaled_font.h_advance(glyph_id)
-            };
-
-            if cursor_x + advance_width > self.window_size[0] {
-                cursor_x = start_x;
-                self.current_settings.position[0] = start_x;
-                self.current_settings.position[1] += line_height;
-
-                let new_total_height = self.current_settings.position[1] + line_height - ascent;
-                if new_total_height > self.window_size[1] {
-                    return WriteResult::Overflow { writed };
+        loop {
+            match self.write_line(&line) {
+                WriteResult::Written => return WriteResult::Written,
+                WriteResult::Overflow { writed } => {
+                    total_writed += writed;
+                    line.chars = line.chars.split_off(writed);
+                    if matches!(self.write_break(), WriteResult::Overflow { writed: _ }) {
+                        return WriteResult::Overflow {
+                            writed: total_writed,
+                        };
+                    }
                 }
             }
-
-            cursor_x += advance_width;
-            self.add_char_vertices(colored_char);
-            self.current_settings.position[0] += advance_width;
-            writed += 1;
         }
-
-        self.current_settings.position[1] += line_height;
-        WriteResult::Written
     }
 
     fn write_char(&mut self, ch: &ColoredChar) -> WriteResult {
         if ch.ch == '\n' {
-            let line_height = self.get_line_height();
-            self.current_settings.position[0] = 10.0;
-            self.current_settings.position[1] += line_height;
-
-            let scale = PxScale::from(self.current_settings.font_size);
-            let ascent = {
-                let scaled_font = self.font.as_scaled(scale);
-                scaled_font.ascent()
-            };
-            let total_height = self.current_settings.position[1] + line_height - ascent;
-
-            if total_height > self.window_size[1] {
-                return WriteResult::Overflow { writed: 0 };
-            }
-
-            return WriteResult::Written;
+            return self.write_break();
         }
 
         if ch.ch == '\r' {
@@ -1229,6 +1012,25 @@ impl TextSurface for TextSystem {
         self.add_char_vertices(ch);
         self.current_settings.position[0] += advance_width;
         WriteResult::Written
+    }
+
+    fn write_break(&mut self) -> WriteResult {
+        let line_height = self.get_line_height();
+        self.current_settings.position[0] = 10.0;
+        self.current_settings.position[1] += line_height;
+
+        let scale = PxScale::from(self.current_settings.font_size);
+        let ascent = {
+            let scaled_font = self.font.as_scaled(scale);
+            scaled_font.ascent()
+        };
+        let total_height = self.current_settings.position[1] + line_height - ascent;
+
+        if total_height > self.window_size[1] {
+            return WriteResult::Overflow { writed: 0 };
+        }
+
+        return WriteResult::Written;
     }
 }
 
@@ -1306,50 +1108,6 @@ mod tests {
     }
 
     #[test]
-    fn test_colored_text_surface_write_char() {
-        let mut text = ColoredText::new();
-
-        let ch1 = ColoredChar {
-            ch: 'A',
-            color: [1.0, 1.0, 1.0, 1.0],
-            background_color: None,
-        };
-
-        let result = text.write_char(&ch1);
-        assert!(matches!(result, WriteResult::Written));
-        assert_eq!(text.lines[0].chars.len(), 1);
-    }
-
-    #[test]
-    fn test_colored_text_surface_write_char_newline() {
-        let mut text = ColoredText::new();
-
-        let ch = ColoredChar {
-            ch: '\n',
-            color: [1.0, 1.0, 1.0, 1.0],
-            background_color: None,
-        };
-
-        let result = text.write_char(&ch);
-        assert!(matches!(result, WriteResult::Written));
-        assert_eq!(text.lines.len(), 2);
-    }
-
-    #[test]
-    fn test_colored_text_surface_write_line() {
-        let mut text = ColoredText::new();
-
-        let mut line = ColoredLine::new();
-        line.push('H', [1.0, 1.0, 1.0, 1.0]);
-        line.push('i', [1.0, 1.0, 1.0, 1.0]);
-
-        let result = text.write_line(&line);
-        assert!(matches!(result, WriteResult::Written));
-        assert_eq!(text.lines.len(), 2);
-        assert_eq!(text.lines[0].chars.len(), 2);
-    }
-
-    #[test]
     fn test_write_result_overflow() {
         let result = WriteResult::Overflow { writed: 5 };
         if let WriteResult::Overflow { writed } = result {
@@ -1357,28 +1115,5 @@ mod tests {
         } else {
             panic!("Expected Overflow variant");
         }
-    }
-
-    #[test]
-    fn test_text_surface_writer() {
-        let mut text = ColoredText::new();
-        {
-            let mut writer = TextSurfaceWriter::new(&mut text);
-            writer.push_char('H', [1.0, 1.0, 1.0, 1.0]);
-            writer.push_char('i', [1.0, 1.0, 1.0, 1.0]);
-        }
-
-        assert_eq!(text.lines[0].chars.len(), 2);
-    }
-
-    #[test]
-    fn test_text_surface_writer_with_newline() {
-        let mut text = ColoredText::new();
-        {
-            let mut writer = TextSurfaceWriter::new(&mut text);
-            writer.push_str("Hello\nWorld", [1.0, 1.0, 1.0, 1.0]);
-        }
-
-        assert_eq!(text.lines.len(), 3);
     }
 }

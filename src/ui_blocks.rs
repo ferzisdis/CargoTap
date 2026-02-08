@@ -14,6 +14,7 @@ impl UiBlock for HeaderBlock {
         line.push_str("🦀 CargoTap ", [1.0, 0.5, 0.0, 1.0]);
         line.push_str("Live Demo", app.config.colors.text_header);
         surface.write_line(&line);
+        surface.write_break();
     }
 }
 
@@ -27,6 +28,7 @@ impl UiBlock for FileInfoBlock {
             [0.5, 1.0, 1.0, 1.0],
         );
         surface.write_line(&line);
+        surface.write_break();
     }
 }
 
@@ -46,6 +48,7 @@ impl UiBlock for ProgressBlock {
             [0.0, 1.0, 0.5, 1.0],
         );
         surface.write_line(&line);
+        surface.write_break();
     }
 }
 
@@ -75,6 +78,7 @@ impl UiBlock for FpsBlock {
             );
         }
         surface.write_line(&line);
+        surface.write_break();
     }
 }
 
@@ -87,6 +91,7 @@ impl UiBlock for SeparatorBlock {
         let mut line = ColoredLine::new();
         line.push_str(&"─".repeat(self.width), [0.5, 0.8, 1.0, 1.0]);
         surface.write_line(&line);
+        surface.write_break();
     }
 }
 
@@ -99,6 +104,7 @@ impl UiBlock for SessionStateBlock {
                 let mut line = ColoredLine::new();
                 line.push_str("⏰ SESSION COMPLETE! ", [1.0, 1.0, 0.0, 1.0]);
                 surface.write_line(&line);
+                surface.write_break();
 
                 let summary = format!(
                     "Time: {:.1}s | Chars: {} | Speed: {:.0} CPM / {:.0} WPM | Accuracy: {:.1}%",
@@ -111,14 +117,17 @@ impl UiBlock for SessionStateBlock {
                 let mut line = ColoredLine::new();
                 line.push_str(&summary, [0.0, 1.0, 0.0, 1.0]);
                 surface.write_line(&line);
+                surface.write_break();
 
                 let mut line = ColoredLine::new();
                 line.push_str("Press SPACE to start new session", [0.0, 1.0, 1.0, 1.0]);
                 surface.write_line(&line);
+                surface.write_break();
 
                 let mut line = ColoredLine::new();
                 line.push_str(&"─".repeat(30), [0.5, 0.8, 1.0, 1.0]);
                 surface.write_line(&line);
+                surface.write_break();
             }
         } else if app.session_state.is_active() {
             let time_str = format!("⏱️  Time: {} ", app.session_state.format_time_remaining());
@@ -132,18 +141,22 @@ impl UiBlock for SessionStateBlock {
                 line.push_str(&speed_str, [0.0, 1.0, 0.0, 1.0]);
             }
             surface.write_line(&line);
+            surface.write_break();
 
             let mut line = ColoredLine::new();
             line.push_str(&"─".repeat(30), [0.5, 0.8, 1.0, 1.0]);
             surface.write_line(&line);
+            surface.write_break();
         } else {
             let mut line = ColoredLine::new();
             line.push_str("Start typing to begin session...", [0.7, 0.7, 0.7, 1.0]);
             surface.write_line(&line);
+            surface.write_break();
 
             let mut line = ColoredLine::new();
             line.push_str(&"─".repeat(30), [0.5, 0.8, 1.0, 1.0]);
             surface.write_line(&line);
+            surface.write_break();
         }
     }
 }
@@ -257,6 +270,7 @@ fn render_code_with_line_numbers(
         }
 
         surface.write_line(&line);
+        surface.write_break();
 
         if line_idx + 1 < display_with_caret.lines.len() {
             current_line_num += 1;
@@ -268,7 +282,7 @@ pub struct RainbowEffectsBlock;
 
 impl UiBlock for RainbowEffectsBlock {
     fn render(&self, app: &mut CargoTapApp, surface: &mut dyn TextSurface) {
-        surface.write_line(&ColoredLine::new());
+        surface.write_break();
 
         let mut line = ColoredLine::new();
         line.push_str("✨ Rainbow: ", app.config.colors.text_default);
@@ -280,6 +294,7 @@ impl UiBlock for RainbowEffectsBlock {
             }
         }
         surface.write_line(&line);
+        surface.write_break();
     }
 }
 
@@ -295,5 +310,6 @@ impl UiBlock for FooterBlock {
             [0.5, 0.5, 0.5, 1.0],
         );
         surface.write_line(&line);
+        surface.write_break();
     }
 }
