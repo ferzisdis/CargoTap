@@ -520,8 +520,12 @@ impl TextSystem {
         let mut current_y = 0;
         let mut row_height = 0;
 
-        // ASCII printable characters
-        for ch in (32u8..127u8).map(|c| c as char) {
+        const EXTRA_CHARS: &[char] = &['↩'];
+
+        for ch in (32u8..127u8)
+            .map(|c| c as char)
+            .chain(EXTRA_CHARS.iter().copied())
+        {
             let glyph_id = self.font.glyph_id(ch);
             let glyph = glyph_id.with_scale(scale);
 

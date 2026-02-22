@@ -192,11 +192,13 @@ impl UiBlock for CodeDisplayBlock {
             let (code_line, is_current) =
                 if cursor_position >= 0 && line_len + break_len > cursor_position as usize {
                     current_line = line.clone();
-                    current_line.chars.push(crate::text::ColoredChar {
-                        ch: ' ',
-                        color: app.config.colors.text_default,
-                        background_color: None,
-                    });
+                    if line_len == cursor_position as usize {
+                        current_line.chars.push(crate::text::ColoredChar {
+                            ch: '↩',
+                            color: app.config.colors.text_default,
+                            background_color: None,
+                        });
+                    }
 
                     let mut index = cursor_position as usize;
                     for i in 0..current_line.chars.len() {
